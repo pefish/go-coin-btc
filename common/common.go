@@ -10,6 +10,7 @@ import (
 
 const (
 	DefaultSequenceNum = wire.MaxTxInSequenceNum - 10
+	MinDustValue       = int64(546)
 )
 
 func GetTxOutByOutPoint(rpcClient *btc_rpc_client.BtcRpcClient, outPoint *wire.OutPoint) (*wire.TxOut, error) {

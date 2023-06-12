@@ -68,13 +68,11 @@ func NewInscriptionTool(net *chaincfg.Params, rpcClient *btc_rpc_client.BtcRpcCl
 }
 
 const (
-	defaultRevealOutValue = int64(500) // 500 sat, ord default 10000
-
 	MaxStandardTxWeight = blockchain.MaxBlockWeight / 10
 )
 
 func (tool *InscriptionTool) Init(net *chaincfg.Params, request *InscriptionRequest) error {
-	revealOutValue := defaultRevealOutValue
+	revealOutValue := common.MinDustValue
 	if request.RevealOutValue > 0 {
 		revealOutValue = request.RevealOutValue
 	}
@@ -312,8 +310,14 @@ func (tool *InscriptionTool) completeRevealTx() error {
 			revealTx = tool.RevealTx[i]
 			idx = 0
 		}
-		witnessArray, err := txscript.CalcTapscriptSignaturehash(txscript.NewTxSigHashes(revealTx, tool.revealTxPrevOutputFetcher),
-			txscript.SigHashDefault, revealTx, idx, tool.revealTxPrevOutputFetcher, txscript.NewBaseTapLeaf(tool.txCtxDataList[i].inscriptionScript))
+		witnessArray, err := txscript.CalcTapscriptSignaturehash(
+			txscript.NewTxSigHashes(revealTx, tool.revealTxPrevOutputFetcher),
+			txscript.SigHashDefault,
+			revealTx,
+			idx,
+			tool.revealTxPrevOutputFetcher,
+			txscript.NewBaseTapLeaf(tool.txCtxDataList[i].inscriptionScript),
+		)
 		if err != nil {
 			return err
 		}

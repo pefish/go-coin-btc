@@ -57,7 +57,7 @@ func (w *Wallet) BuildTx(
 	outPointList []*OutPointWithPriv,
 	changeAddress string,
 	targetAddress string,
-	feeRate int64,
+	feeRate uint64,
 ) (*wire.MsgTx, error) {
 	totalSenderAmount := btcutil.Amount(0)
 	tx := wire.NewMsgTx(wire.TxVersion)

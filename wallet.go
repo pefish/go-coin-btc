@@ -3,9 +3,11 @@ package go_coin_btc
 import (
 	"bytes"
 	"encoding/hex"
+	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/mempool"
+	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/pefish/go-coin-btc/common"
 	"github.com/pefish/go-coin-btc/ord"
@@ -46,31 +48,70 @@ func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (*ord.Inscr
 	return ord.NewInscriptionTool(w.Net, w.RpcClient, request)
 }
 
-func (w *Wallet) BuildSendInscriptionTx(
-	inscriptionOutPoint *wire.OutPoint,
-	outPointList []*wire.OutPoint,
-	changePkScript []byte,
-	targetPkScript []byte,
+type OutPointWithPriv struct {
+	OutPoint *wire.OutPoint
+	Priv     *btcec.PrivateKey
+}
+
+func (w *Wallet) BuildTx(
+	outPointList []*OutPointWithPriv,
+	changeAddress string,
+	targetAddress string,
 	feeRate int64,
 ) (*wire.MsgTx, error) {
 	totalSenderAmount := btcutil.Amount(0)
 	tx := wire.NewMsgTx(wire.TxVersion)
 
-	tx.AddTxIn(wire.NewTxIn(inscriptionOutPoint, nil, nil))
+	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
 	for i := range outPointList {
-		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, outPointList[i])
+		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, outPointList[i].OutPoint)
 		if err != nil {
 			return nil, err
 		}
-		in := wire.NewTxIn(outPointList[i], nil, nil)
+		prevOutputFetcher.AddPrevOut(*outPointList[i].OutPoint, txOut)
+
+		in := wire.NewTxIn(outPointList[i].OutPoint, nil, nil)
 		in.Sequence = common.DefaultSequenceNum
+
+		// sign
+		witness, err := txscript.TaprootWitnessSignature(
+			tx,
+			txscript.NewTxSigHashes(tx, prevOutputFetcher),
+			i,
+			txOut.Value,
+			txOut.PkScript,
+			txscript.SigHashDefault,
+			outPointList[i].Priv,
+		)
+		if err != nil {
+			return nil, err
+		}
+		in.Witness = witness
+
 		tx.AddTxIn(in)
 
 		totalSenderAmount += btcutil.Amount(txOut.Value)
 	}
 	var targetValue int64 = 546
-	tx.AddTxOut(wire.NewTxOut(targetValue, targetPkScript))
-	tx.AddTxOut(wire.NewTxOut(0, changePkScript))
+
+	targetAddressObj, err := btcutil.DecodeAddress(targetAddress, w.Net)
+	if err != nil {
+		return nil, err
+	}
+	targetScriptPubKey, err := txscript.PayToAddrScript(targetAddressObj)
+	if err != nil {
+		return nil, err
+	}
+	tx.AddTxOut(wire.NewTxOut(targetValue, targetScriptPubKey))
+	changeAddressObj, err := btcutil.DecodeAddress(changeAddress, w.Net)
+	if err != nil {
+		return nil, err
+	}
+	changeScriptPubKey, err := txscript.PayToAddrScript(changeAddressObj)
+	if err != nil {
+		return nil, err
+	}
+	tx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
 	fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
 	changeAmount := totalSenderAmount - btcutil.Amount(targetValue) - fee
 	if changeAmount > 0 {

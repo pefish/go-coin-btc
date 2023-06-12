@@ -259,6 +259,8 @@ func (tool *InscriptionTool) buildCommitTx(commitTxOutPointList []*wire.OutPoint
 		if err != nil {
 			return err
 		}
+		tool.commitTxPrevOutputFetcher.AddPrevOut(*commitTxOutPointList[i], txOut)
+
 		if changePkScript == nil { // first sender as change address
 			changePkScript = &txOut.PkScript
 		}

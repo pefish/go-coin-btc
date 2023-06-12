@@ -16,7 +16,7 @@ import (
 )
 
 type Wallet struct {
-	net       *chaincfg.Params
+	Net       *chaincfg.Params
 	RpcClient *btc_rpc_client.BtcRpcClient
 }
 
@@ -28,7 +28,7 @@ type RpcServerConfig struct {
 
 func NewWallet(net *chaincfg.Params) *Wallet {
 	return &Wallet{
-		net: net,
+		Net: net,
 	}
 }
 
@@ -43,7 +43,7 @@ func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) {
 }
 
 func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (*ord.InscriptionTool, error) {
-	return ord.NewInscriptionTool(w.net, w.RpcClient, request)
+	return ord.NewInscriptionTool(w.Net, w.RpcClient, request)
 }
 
 func (w *Wallet) BuildSendInscriptionTx(

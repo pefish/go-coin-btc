@@ -1,20 +1,24 @@
-package wallet
+package go_coin_btc
 
 import (
 	"bytes"
 	"encoding/hex"
 	"github.com/btcsuite/btcd/btcutil"
+	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/wire"
-	btc_rpc_client "github.com/pefish/go-btc-rpc-client"
 	"github.com/pefish/go-coin-btc/common"
+	"github.com/pefish/go-coin-btc/ord"
+	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_logger "github.com/pefish/go-logger"
 	"github.com/pkg/errors"
 	"time"
 )
 
 type Wallet struct {
-	rpcClient *btc_rpc_client.BtcRpcClient
+	net             *chaincfg.Params
+	RpcClient       *btc_rpc_client.BtcRpcClient
+	InscriptionTool *ord.InscriptionTool
 }
 
 type RpcServerConfig struct {
@@ -23,19 +27,29 @@ type RpcServerConfig struct {
 	Password string `json:"password"`
 }
 
-func NewWallet(rpcServerConfig *RpcServerConfig) *Wallet {
-	wallet := &Wallet{}
-	if rpcServerConfig != nil {
-		wallet.rpcClient = btc_rpc_client.NewBtcRpcClient(
-			go_logger.Logger,
-			3*time.Second,
-			rpcServerConfig.Url,
-			rpcServerConfig.Username,
-			rpcServerConfig.Password,
-		)
+func NewWallet(net *chaincfg.Params) *Wallet {
+	return &Wallet{
+		net: net,
 	}
+}
 
-	return wallet
+func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) {
+	w.RpcClient = btc_rpc_client.NewBtcRpcClient(
+		go_logger.Logger,
+		3*time.Second,
+		rpcServerConfig.Url,
+		rpcServerConfig.Username,
+		rpcServerConfig.Password,
+	)
+}
+
+func (w *Wallet) InitInscriptionTool(request *ord.InscriptionRequest) error {
+	inscriptionTool, err := ord.NewInscriptionTool(w.net, w.RpcClient, request)
+	if err != nil {
+		return err
+	}
+	w.InscriptionTool = inscriptionTool
+	return nil
 }
 
 func (w *Wallet) BuildSendInscriptionTx(
@@ -50,7 +64,7 @@ func (w *Wallet) BuildSendInscriptionTx(
 
 	tx.AddTxIn(wire.NewTxIn(inscriptionOutPoint, nil, nil))
 	for i := range outPointList {
-		txOut, err := common.GetTxOutByOutPoint(w.rpcClient, outPointList[i])
+		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, outPointList[i])
 		if err != nil {
 			return nil, err
 		}
@@ -85,12 +99,4 @@ func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf.Bytes()), nil
-}
-
-func (w *Wallet) SendRawTransaction(tx *wire.MsgTx) (string, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-	if err := tx.Serialize(buf); err != nil {
-		return "", err
-	}
-	return w.rpcClient.SendRawTransaction(hex.EncodeToString(buf.Bytes()))
 }

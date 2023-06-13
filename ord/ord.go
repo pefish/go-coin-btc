@@ -60,6 +60,7 @@ func NewInscriptionTool(net *chaincfg.Params, rpcClient *btc_rpc_client.BtcRpcCl
 	tool := &InscriptionTool{
 		net:                       net,
 		rpcClient:                 rpcClient,
+		commitTxPrivateKeyList:    request.CommitTxPrivateKeyList,
 		commitTxPrevOutputFetcher: txscript.NewMultiPrevOutFetcher(nil),
 		txCtxDataList:             make([]*inscriptionTxCtxData, len(request.DataList)),
 		revealTxPrevOutputFetcher: txscript.NewMultiPrevOutFetcher(nil),

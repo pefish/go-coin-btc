@@ -29,7 +29,7 @@ type InscriptionRequest struct {
 	// a local signature is required for committing the commit tx.
 	// Currently, CommitTxPrivateKeyList[i] sign CommitTxOutPointList[i]
 	CommitFeeRate      int64
-	FeeRate            int64
+	RevealFeeRate      int64
 	DataList           []InscriptionData
 	SingleRevealTxOnly bool // Currently, the official Ordinal parser can only parse a single NFT per transaction.
 	// When the official Ordinal parser supports parsing multiple NFTs in the future, we can consider using a single reveal transaction.
@@ -87,7 +87,7 @@ func (tool *InscriptionTool) Init(net *chaincfg.Params, request *InscriptionRequ
 		tool.txCtxDataList[i] = txCtxData
 		destinations[i] = request.DataList[i].Destination
 	}
-	totalRevealPrevOutput, err := tool.buildEmptyRevealTx(request.SingleRevealTxOnly, destinations, revealOutValue, request.FeeRate)
+	totalRevealPrevOutput, err := tool.buildEmptyRevealTx(request.SingleRevealTxOnly, destinations, revealOutValue, request.RevealFeeRate)
 	if err != nil {
 		return err
 	}

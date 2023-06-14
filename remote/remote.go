@@ -37,8 +37,10 @@ func NewBtcRpcClient(
 
 type GetRawTransactionResult struct {
 	Vin []struct {
-		TxId string `json:"txid"`
-		Vout uint64 `json:"vout"`
+		TxId        string   `json:"txid"`
+		Vout        uint64   `json:"vout"`
+		TxInWitness []string `json:"txinwitness"`
+		Sequence    uint64   `json:"sequence"`
 	} `json:"vin"`
 	Vout []struct {
 		Value        float64 `json:"value"`

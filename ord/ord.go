@@ -18,22 +18,18 @@ import (
 )
 
 type InscriptionData struct {
-	ContentType string
-	Body        []byte
-	Destination string
+	ContentType    string
+	Body           []byte
+	Destination    string
+	RevealOutValue uint64
+	RevealFeeRate  uint64
 }
 
 type InscriptionRequest struct {
 	CommitTxOutPointList   []*wire.OutPoint
-	CommitTxPrivateKeyList []*btcec.PrivateKey // If used without RPC,
-	// a local signature is required for committing the commit tx.
-	// Currently, CommitTxPrivateKeyList[i] sign CommitTxOutPointList[i]
-	CommitFeeRate      int64
-	RevealFeeRate      int64
-	DataList           []InscriptionData
-	SingleRevealTxOnly bool // Currently, the official Ordinal parser can only parse a single NFT per transaction.
-	// When the official Ordinal parser supports parsing multiple NFTs in the future, we can consider using a single reveal transaction.
-	RevealOutValue int64
+	CommitTxPrivateKeyList []*btcec.PrivateKey
+	CommitFeeRate          int64
+	DataList               []InscriptionData
 }
 
 type inscriptionTxCtxData struct {
@@ -43,6 +39,8 @@ type inscriptionTxCtxData struct {
 	controlBlockWitness     []byte
 	recoveryPrivateKeyWIF   string
 	revealTxPrevOutput      *wire.TxOut
+	revealOutValue          int64
+	revealFeeRate           int64
 }
 
 type InscriptionTool struct {
@@ -73,10 +71,6 @@ const (
 )
 
 func (tool *InscriptionTool) Init(net *chaincfg.Params, request *InscriptionRequest) error {
-	revealOutValue := common.MinDustValue
-	if request.RevealOutValue > 0 {
-		revealOutValue = request.RevealOutValue
-	}
 	tool.txCtxDataList = make([]*inscriptionTxCtxData, len(request.DataList))
 	destinations := make([]string, len(request.DataList))
 	for i := 0; i < len(request.DataList); i++ {
@@ -87,7 +81,7 @@ func (tool *InscriptionTool) Init(net *chaincfg.Params, request *InscriptionRequ
 		tool.txCtxDataList[i] = txCtxData
 		destinations[i] = request.DataList[i].Destination
 	}
-	totalRevealPrevOutput, err := tool.buildEmptyRevealTx(request.SingleRevealTxOnly, destinations, revealOutValue, request.RevealFeeRate)
+	totalRevealPrevOutput, err := tool.buildEmptyRevealTx(destinations)
 	if err != nil {
 		return err
 	}
@@ -174,76 +168,50 @@ func createInscriptionTxCtxData(net *chaincfg.Params, data InscriptionData) (*in
 		commitTxAddressPkScript: commitTxAddressPkScript,
 		controlBlockWitness:     controlBlockWitness,
 		recoveryPrivateKeyWIF:   recoveryPrivateKeyWIF.String(),
+		revealOutValue: func() int64 {
+			if data.RevealOutValue == 0 {
+				return common.MinDustValue
+			} else {
+				return int64(data.RevealOutValue)
+			}
+		}(),
+		revealFeeRate: int64(data.RevealFeeRate),
 	}, nil
 }
 
-func (tool *InscriptionTool) buildEmptyRevealTx(singleRevealTxOnly bool, destination []string, revealOutValue, feeRate int64) (int64, error) {
+func (tool *InscriptionTool) buildEmptyRevealTx(destination []string) (int64, error) {
 	var revealTx []*wire.MsgTx
 	totalPrevOutput := int64(0)
-	total := len(tool.txCtxDataList)
-	addTxInTxOutIntoRevealTx := func(tx *wire.MsgTx, index int) error {
-		in := wire.NewTxIn(&wire.OutPoint{Index: uint32(index)}, nil, nil)
+	revealTx = make([]*wire.MsgTx, len(tool.txCtxDataList))
+	for i, txCtxData := range tool.txCtxDataList {
+		tx := wire.NewMsgTx(wire.TxVersion)
+		in := wire.NewTxIn(&wire.OutPoint{Index: uint32(i)}, nil, nil)
 		in.Sequence = common.DefaultSequenceNum
 		tx.AddTxIn(in)
-		receiver, err := btcutil.DecodeAddress(destination[index], tool.net)
+		receiver, err := btcutil.DecodeAddress(destination[i], tool.net)
 		if err != nil {
-			return err
+			return 0, err
 		}
 		scriptPubKey, err := txscript.PayToAddrScript(receiver)
 		if err != nil {
-			return err
+			return 0, err
 		}
-		out := wire.NewTxOut(revealOutValue, scriptPubKey)
+		out := wire.NewTxOut(txCtxData.revealOutValue, scriptPubKey)
 		tx.AddTxOut(out)
-		return nil
-	}
-	if singleRevealTxOnly {
-		revealTx = make([]*wire.MsgTx, 1)
-		tx := wire.NewMsgTx(wire.TxVersion)
-		for i := 0; i < total; i++ {
-			err := addTxInTxOutIntoRevealTx(tx, i)
-			if err != nil {
-				return 0, err
-			}
-		}
-		eachRevealBaseTxFee := int64(tx.SerializeSize()) * feeRate / int64(total)
-		prevOutput := (revealOutValue + eachRevealBaseTxFee) * int64(total)
+
+		prevOutput := txCtxData.revealOutValue + int64(tx.SerializeSize())*txCtxData.revealFeeRate
 		{
 			emptySignature := make([]byte, 64)
 			emptyControlBlockWitness := make([]byte, 33)
-			for i := 0; i < total; i++ {
-				fee := (int64(wire.TxWitness{emptySignature, tool.txCtxDataList[i].inscriptionScript, emptyControlBlockWitness}.SerializeSize()+2+3) / 4) * feeRate
-				tool.txCtxDataList[i].revealTxPrevOutput = &wire.TxOut{
-					PkScript: tool.txCtxDataList[i].commitTxAddressPkScript,
-					Value:    revealOutValue + eachRevealBaseTxFee + fee,
-				}
-				prevOutput += fee
+			fee := (int64(wire.TxWitness{emptySignature, txCtxData.inscriptionScript, emptyControlBlockWitness}.SerializeSize()+2+3) / 4) * txCtxData.revealFeeRate
+			prevOutput += fee
+			tool.txCtxDataList[i].revealTxPrevOutput = &wire.TxOut{
+				PkScript: txCtxData.commitTxAddressPkScript,
+				Value:    prevOutput,
 			}
 		}
-		totalPrevOutput = prevOutput
-		revealTx[0] = tx
-	} else {
-		revealTx = make([]*wire.MsgTx, total)
-		for i := 0; i < total; i++ {
-			tx := wire.NewMsgTx(wire.TxVersion)
-			err := addTxInTxOutIntoRevealTx(tx, i)
-			if err != nil {
-				return 0, err
-			}
-			prevOutput := revealOutValue + int64(tx.SerializeSize())*feeRate
-			{
-				emptySignature := make([]byte, 64)
-				emptyControlBlockWitness := make([]byte, 33)
-				fee := (int64(wire.TxWitness{emptySignature, tool.txCtxDataList[i].inscriptionScript, emptyControlBlockWitness}.SerializeSize()+2+3) / 4) * feeRate
-				prevOutput += fee
-				tool.txCtxDataList[i].revealTxPrevOutput = &wire.TxOut{
-					PkScript: tool.txCtxDataList[i].commitTxAddressPkScript,
-					Value:    prevOutput,
-				}
-			}
-			totalPrevOutput += prevOutput
-			revealTx[i] = tx
-		}
+		totalPrevOutput += prevOutput
+		revealTx[i] = tx
 	}
 	tool.RevealTx = revealTx
 	return totalPrevOutput, nil

@@ -15,6 +15,7 @@ import (
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_logger "github.com/pefish/go-logger"
 	"github.com/pkg/errors"
+	"strings"
 	"time"
 )
 
@@ -178,4 +179,54 @@ func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(buf.Bytes()), nil
+}
+
+func (w *Wallet) DecodeInscriptionScript(witness1Str string) (string, string, error) {
+	bytes, err := hex.DecodeString(witness1Str)
+	if err != nil {
+		return "", "", err
+	}
+
+	asmStr, err := txscript.DisasmString(bytes)
+	if err != nil {
+		return "", "", err
+	}
+	asmArr := strings.Split(asmStr, " ")
+
+	if len(asmArr) < 8 {
+		return "", "", fmt.Errorf("inscription format error")
+	}
+
+	if asmArr[len(asmArr)-1] != "OP_ENDIF" {
+		return "", "", fmt.Errorf("inscription format error")
+	}
+	asmArr = asmArr[:len(asmArr)-1]
+	bodyArr := make([]string, 0)
+	for i := len(asmArr) - 1; i < len(asmArr); i-- {
+		if asmArr[i] == "0" {
+			break
+		}
+		bodyArr = append([]string{asmArr[i]}, bodyArr...)
+	}
+
+	bodyHexString := strings.Join(bodyArr, "")
+
+	asmArr = asmArr[:len(asmArr)-1-len(bodyArr)]
+
+	contentTypeB, err := hex.DecodeString(asmArr[len(asmArr)-1])
+	if err != nil {
+		return "", "", err
+	}
+	contentType := string(contentTypeB)
+	if asmArr[len(asmArr)-2] != "01" {
+		return "", "", fmt.Errorf("inscription format error")
+	}
+	if asmArr[len(asmArr)-3] != "6f7264" {
+		return "", "", fmt.Errorf("inscription format error")
+	}
+	if asmArr[len(asmArr)-4] != "OP_IF" {
+		return "", "", fmt.Errorf("inscription format error")
+	}
+
+	return contentType, bodyHexString, nil
 }

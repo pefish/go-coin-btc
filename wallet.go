@@ -3,6 +3,7 @@ package go_coin_btc
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -53,10 +54,19 @@ type OutPointWithPriv struct {
 	Priv     *btcec.PrivateKey
 }
 
+func (w *Wallet) GetTxHex(tx *wire.MsgTx) (string, error) {
+	var buf bytes.Buffer
+	if err := tx.Serialize(&buf); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(buf.Bytes()), nil
+}
+
 func (w *Wallet) BuildTx(
 	outPointList []*OutPointWithPriv,
 	changeAddress string,
 	targetAddress string,
+	targetValue uint64,
 	feeRate uint64,
 ) (*wire.MsgTx, error) {
 	totalSenderAmount := btcutil.Amount(0)
@@ -72,27 +82,10 @@ func (w *Wallet) BuildTx(
 
 		in := wire.NewTxIn(outPointList[i].OutPoint, nil, nil)
 		in.Sequence = common.DefaultSequenceNum
-
-		// sign
-		witness, err := txscript.TaprootWitnessSignature(
-			tx,
-			txscript.NewTxSigHashes(tx, prevOutputFetcher),
-			i,
-			txOut.Value,
-			txOut.PkScript,
-			txscript.SigHashDefault,
-			outPointList[i].Priv,
-		)
-		if err != nil {
-			return nil, err
-		}
-		in.Witness = witness
-
 		tx.AddTxIn(in)
 
 		totalSenderAmount += btcutil.Amount(txOut.Value)
 	}
-	var targetValue int64 = 546
 
 	targetAddressObj, err := btcutil.DecodeAddress(targetAddress, w.Net)
 	if err != nil {
@@ -102,29 +95,80 @@ func (w *Wallet) BuildTx(
 	if err != nil {
 		return nil, err
 	}
-	tx.AddTxOut(wire.NewTxOut(targetValue, targetScriptPubKey))
-	changeAddressObj, err := btcutil.DecodeAddress(changeAddress, w.Net)
-	if err != nil {
-		return nil, err
-	}
-	changeScriptPubKey, err := txscript.PayToAddrScript(changeAddressObj)
-	if err != nil {
-		return nil, err
-	}
-	tx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
-	fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
-	changeAmount := totalSenderAmount - btcutil.Amount(targetValue) - fee
-	if changeAmount > 0 {
-		tx.TxOut[len(tx.TxOut)-1].Value = int64(changeAmount)
-	} else {
-		tx.TxOut = tx.TxOut[:len(tx.TxOut)-1]
-		if changeAmount < 0 {
-			feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
-			if totalSenderAmount-btcutil.Amount(targetValue)-feeWithoutChange < 0 {
-				return nil, errors.New("insufficient balance")
+	tx.AddTxOut(wire.NewTxOut(int64(targetValue), targetScriptPubKey))
+	if changeAddress != "" {
+		changeAddressObj, err := btcutil.DecodeAddress(changeAddress, w.Net)
+		if err != nil {
+			return nil, err
+		}
+		changeScriptPubKey, err := txscript.PayToAddrScript(changeAddressObj)
+		if err != nil {
+			return nil, err
+		}
+		tx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
+		fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+		changeAmount := totalSenderAmount - btcutil.Amount(targetValue) - fee
+		if changeAmount > 0 {
+			tx.TxOut[len(tx.TxOut)-1].Value = int64(changeAmount)
+		} else {
+			tx.TxOut = tx.TxOut[:len(tx.TxOut)-1]
+			if changeAmount < 0 {
+				feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+				if totalSenderAmount-btcutil.Amount(targetValue)-feeWithoutChange < 0 {
+					return nil, errors.New("insufficient balance")
+				}
 			}
 		}
+	} else {
+		fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+		if totalSenderAmount-btcutil.Amount(targetValue)-fee < 0 {
+			return nil, errors.New("insufficient balance")
+		}
 	}
+
+	// sign
+	for i, txIn := range tx.TxIn {
+		txOut := prevOutputFetcher.FetchPrevOutput(txIn.PreviousOutPoint)
+
+		scriptType, _, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, w.Net)
+		if err != nil {
+			return nil, err
+		}
+		switch scriptType {
+		case txscript.WitnessV0PubKeyHashTy:
+			witness, err := txscript.WitnessSignature(
+				tx,
+				txscript.NewTxSigHashes(tx, prevOutputFetcher),
+				i,
+				txOut.Value,
+				txOut.PkScript,
+				txscript.SigHashAll,
+				outPointList[i].Priv,
+				true,
+			)
+			if err != nil {
+				return nil, err
+			}
+			txIn.Witness = witness
+		case txscript.WitnessV1TaprootTy:
+			witness, err := txscript.TaprootWitnessSignature(
+				tx,
+				txscript.NewTxSigHashes(tx, prevOutputFetcher),
+				i,
+				txOut.Value,
+				txOut.PkScript,
+				txscript.SigHashDefault,
+				outPointList[i].Priv,
+			)
+			if err != nil {
+				return nil, err
+			}
+			txIn.Witness = witness
+		default:
+			return nil, fmt.Errorf("script type not be supported")
+		}
+	}
+
 	return tx, nil
 }
 

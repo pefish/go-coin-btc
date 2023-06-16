@@ -42,14 +42,16 @@ type VinStruct struct {
 	Sequence    uint64   `json:"sequence"`
 }
 
+type ScriptPubKeyStruct struct {
+	Address string `json:"address"`
+	Type    string `json:"type"`
+	Hex     string `json:"hex"`
+}
+
 type VoutStruct struct {
-	Value        float64 `json:"value"`
-	N            uint64  `json:"n"`
-	ScriptPubKey struct {
-		Address string `json:"address"`
-		Type    string `json:"type"`
-		Hex     string `json:"hex"`
-	} `json:"scriptPubKey"`
+	Value        float64            `json:"value"`
+	N            uint64             `json:"n"`
+	ScriptPubKey ScriptPubKeyStruct `json:"scriptPubKey"`
 }
 
 type GetRawTransactionResult struct {

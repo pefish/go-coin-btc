@@ -98,7 +98,10 @@ type ListTransactionsResult struct {
 func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListTransactionsResult, error) {
 	var result struct {
 		Result []ListTransactionsResult `json:"result"`
-		Error  *string                  `json:"error"`
+		Error  *struct {
+			Code    int64  `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
@@ -122,7 +125,7 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListT
 		return nil, err
 	}
 	if result.Error != nil {
-		return nil, fmt.Errorf(*result.Error)
+		return nil, fmt.Errorf((*result.Error).Message)
 	}
 	return result.Result, nil
 }
@@ -132,7 +135,10 @@ func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
 		Result struct {
 			Feerate float64 `json:"feerate"`
 		} `json:"result"`
-		Error *string `json:"error"`
+		Error *struct {
+			Code    int64  `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
@@ -153,15 +159,18 @@ func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
 		return "", err
 	}
 	if result.Error != nil {
-		return "", fmt.Errorf(*result.Error)
+		return "", fmt.Errorf((*result.Error).Message)
 	}
 	return go_decimal.Decimal.Start(result.Result.Feerate).MustShiftedBy(5).EndForString(), nil
 }
 
 func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
 	var result struct {
-		Result string  `json:"result"`
-		Error  *string `json:"error"`
+		Result string `json:"result"`
+		Error  *struct {
+			Code    int64  `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
 	}
 	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
@@ -182,7 +191,7 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
 		return "", err
 	}
 	if result.Error != nil {
-		return "", fmt.Errorf(*result.Error)
+		return "", fmt.Errorf((*result.Error).Message)
 	}
 	return result.Result, nil
 }

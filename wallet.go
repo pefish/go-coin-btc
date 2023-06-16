@@ -116,7 +116,7 @@ func (w *Wallet) BuildTx(
 			if changeAmount < 0 {
 				feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
 				if totalSenderAmount-btcutil.Amount(targetValue)-feeWithoutChange < 0 {
-					return nil, errors.New("insufficient balance")
+					return nil, fmt.Errorf("insufficient balance. totalSenderAmount: %s, targetValue: %d, fee: %s", totalSenderAmount.String(), targetValue, fee.String())
 				}
 			}
 		}

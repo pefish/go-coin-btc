@@ -35,24 +35,28 @@ func NewBtcRpcClient(
 	}
 }
 
+type VinStruct struct {
+	TxId        string   `json:"txid"`
+	Vout        uint64   `json:"vout"`
+	TxInWitness []string `json:"txinwitness"`
+	Sequence    uint64   `json:"sequence"`
+}
+
+type VoutStruct struct {
+	Value        float64 `json:"value"`
+	N            uint64  `json:"n"`
+	ScriptPubKey struct {
+		Address string `json:"address"`
+		Type    string `json:"type"`
+		Hex     string `json:"hex"`
+	} `json:"scriptPubKey"`
+}
+
 type GetRawTransactionResult struct {
-	Vin []struct {
-		TxId        string   `json:"txid"`
-		Vout        uint64   `json:"vout"`
-		TxInWitness []string `json:"txinwitness"`
-		Sequence    uint64   `json:"sequence"`
-	} `json:"vin"`
-	Vout []struct {
-		Value        float64 `json:"value"`
-		N            uint64  `json:"n"`
-		ScriptPubKey struct {
-			Address string `json:"address"`
-			Type    string `json:"type"`
-			Hex     string `json:"hex"`
-		} `json:"scriptPubKey"`
-	} `json:"vout"`
-	Confirmations uint64 `json:"confirmations,omitempty"`
-	Hash          string `json:"hash"`
+	Vin           []VinStruct  `json:"vin"`
+	Vout          []VoutStruct `json:"vout"`
+	Confirmations uint64       `json:"confirmations,omitempty"`
+	Hash          string       `json:"hash"`
 }
 
 func (brc *BtcRpcClient) GetRawTransaction(hash string) (*GetRawTransactionResult, error) {

@@ -52,6 +52,7 @@ type GetRawTransactionResult struct {
 		} `json:"scriptPubKey"`
 	} `json:"vout"`
 	Confirmations uint64 `json:"confirmations,omitempty"`
+	Hash          string `json:"hash"`
 }
 
 func (brc *BtcRpcClient) GetRawTransaction(hash string) (*GetRawTransactionResult, error) {

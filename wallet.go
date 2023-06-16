@@ -14,7 +14,6 @@ import (
 	"github.com/pefish/go-coin-btc/ord"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_logger "github.com/pefish/go-logger"
-	"github.com/pkg/errors"
 	"strings"
 	"time"
 )
@@ -123,7 +122,7 @@ func (w *Wallet) BuildTx(
 	} else {
 		fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
 		if totalSenderAmount-btcutil.Amount(targetValue)-fee < 0 {
-			return nil, errors.New("insufficient balance")
+			return nil, fmt.Errorf("insufficient balance. totalSenderAmount: %s, targetValue: %d, fee: %s", totalSenderAmount.String(), targetValue, fee.String())
 		}
 	}
 

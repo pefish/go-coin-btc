@@ -58,10 +58,10 @@ type GetRawTransactionResult struct {
 	Vin           []VinStruct  `json:"vin"`
 	Vout          []VoutStruct `json:"vout"`
 	Confirmations uint64       `json:"confirmations,omitempty"`
-	Hash          string       `json:"hash"`
+	TxId          string       `json:"txid"`
 }
 
-func (brc *BtcRpcClient) GetRawTransaction(hash string) (*GetRawTransactionResult, error) {
+func (brc *BtcRpcClient) GetRawTransaction(txId string) (*GetRawTransactionResult, error) {
 	var result struct {
 		Result *GetRawTransactionResult `json:"result"`
 		Error  *string                  `json:"error"`
@@ -72,7 +72,7 @@ func (brc *BtcRpcClient) GetRawTransaction(hash string) (*GetRawTransactionResul
 			"jsonrpc": "2.0",
 			"method":  "getrawtransaction",
 			"params": []interface{}{
-				hash,
+				txId,
 				1,
 			},
 			"id": 1,

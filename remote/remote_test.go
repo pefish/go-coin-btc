@@ -20,3 +20,17 @@ func TestBtcRpcClient_SendRawTransaction(t *testing.T) {
 
 	fmt.Println(hash, err)
 }
+
+func TestBtcRpcClient_GetRawTransaction(t *testing.T) {
+	c := NewBtcRpcClient(
+		go_logger.Logger,
+		3*time.Second,
+		"",
+		"",
+		"",
+	)
+
+	data, err := c.GetRawTransaction("30a389943aa9e10430ae7de3796db8714cdb3c7e2b559dba8d715a2437181a5a")
+
+	fmt.Println(data, err)
+}

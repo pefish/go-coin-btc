@@ -106,6 +106,14 @@ func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (stri
 	return "", fmt.Errorf("address type error")
 }
 
+func (w *Wallet) DeriveBySeedPath(seedHex string, path string) (*KeyInfo, error) {
+	keyInfo, err := w.MasterKeyBySeed(seedHex)
+	if err != nil {
+		return nil, err
+	}
+	return w.DeriveByXprivPath(keyInfo.XPriv, path)
+}
+
 func (w *Wallet) DeriveByXprivPath(xpriv string, path string) (*KeyInfo, error) {
 	masterKey, err := bip32.B58Deserialize(xpriv)
 	if err != nil {

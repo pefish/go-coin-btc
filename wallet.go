@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/mempool"
@@ -14,6 +15,9 @@ import (
 	"github.com/pefish/go-coin-btc/ord"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_logger "github.com/pefish/go-logger"
+	"github.com/tyler-smith/go-bip32"
+	"github.com/tyler-smith/go-bip39"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -33,6 +37,139 @@ func NewWallet(net *chaincfg.Params) *Wallet {
 	return &Wallet{
 		Net: net,
 	}
+}
+
+func (w *Wallet) SeedHexByMnemonic(mnemonic string, pass string) string {
+	return hex.EncodeToString(bip39.NewSeed(mnemonic, pass))
+}
+
+type KeyInfo struct {
+	XPriv   string
+	XPub    string
+	PrivKey string
+	PubKey  string
+	Wif     string
+}
+
+type AddressType int
+
+const (
+	ADDRESS_TYPE_P2PKH AddressType = iota
+	ADDRESS_TYPE_P2SH
+	ADDRESS_TYPE_P2WPKH
+	ADDRESS_TYPE_P2TR
+)
+
+func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (string, error) {
+	pubKeyBytes, err := hex.DecodeString(pubKey)
+	if err != nil {
+		return "", err
+	}
+	pubKeyHash := btcutil.Hash160(pubKeyBytes)
+
+	if addressType == ADDRESS_TYPE_P2PKH { // pubkeyhash
+		addrObj, err := btcutil.NewAddressPubKeyHash(pubKeyHash, w.Net)
+		if err != nil {
+			return "", err
+		}
+		return addrObj.String(), nil
+	}
+	if addressType == ADDRESS_TYPE_P2SH { // scripthash
+		scriptSig, err := txscript.NewScriptBuilder().AddOp(txscript.OP_0).AddData(pubKeyHash).Script()
+		if err != nil {
+			return "", err
+		}
+		addrObj, err := btcutil.NewAddressScriptHash(scriptSig, w.Net)
+		if err != nil {
+			return "", err
+		}
+		return addrObj.String(), nil
+	}
+	if addressType == ADDRESS_TYPE_P2WPKH { // witness_v0_keyhash
+		addrObj, err := btcutil.NewAddressWitnessPubKeyHash(pubKeyHash, w.Net)
+		if err != nil {
+			return "", err
+		}
+		return addrObj.String(), nil
+	}
+	if addressType == ADDRESS_TYPE_P2TR { // witness_v1_taproot
+		pubKeyObj, err := btcec.ParsePubKey(pubKeyBytes)
+		if err != nil {
+			return "", err
+		}
+		addrObj, err := btcutil.NewAddressTaproot(schnorr.SerializePubKey(txscript.ComputeTaprootKeyNoScript(pubKeyObj)), w.Net)
+		if err != nil {
+			return "", err
+		}
+		return addrObj.String(), nil
+	}
+	return "", fmt.Errorf("address type error")
+}
+
+func (w *Wallet) DeriveByXprivPath(xpriv string, path string) (*KeyInfo, error) {
+	masterKey, err := bip32.B58Deserialize(xpriv)
+	if err != nil {
+		return nil, err
+	}
+
+	parts := strings.Split(path, "/")
+	if parts[0] == path {
+		return nil, fmt.Errorf("path '%s' doesn't contain '/' separators", path)
+	}
+	if strings.TrimSpace(parts[0]) == "m" {
+		parts = parts[1:]
+	}
+
+	key := masterKey
+	for i, part := range parts {
+		if part == "" {
+			return nil, fmt.Errorf("path %q with split element #%d is an empty string", part, i)
+		}
+		isHarden := part[len(part)-1:] == "'"
+		if isHarden {
+			part = part[:len(part)-1]
+		}
+
+		idx, err := strconv.ParseUint(part, 10, 31)
+		if err != nil {
+			return nil, fmt.Errorf("invalid BIP 32 path %s: %w", path, err)
+		}
+		if isHarden {
+			idx |= 0x80000000
+		}
+		key, err = key.NewChildKey(uint32(idx))
+		if err != nil {
+			return nil, fmt.Errorf("derive index %d error: %w", idx, err)
+		}
+	}
+	return w.keyInfoOfKey(key)
+}
+
+func (w *Wallet) keyInfoOfKey(key *bip32.Key) (*KeyInfo, error) {
+	privKey, pubK := btcec.PrivKeyFromBytes(key.Key)
+	wifObj, err := btcutil.NewWIF(privKey, w.Net, true)
+	if err != nil {
+		return nil, err
+	}
+	return &KeyInfo{
+		XPriv:   key.B58Serialize(),
+		XPub:    key.PublicKey().B58Serialize(),
+		PrivKey: hex.EncodeToString(key.Key),
+		PubKey:  hex.EncodeToString(pubK.SerializeCompressed()),
+		Wif:     wifObj.String(),
+	}, nil
+}
+
+func (w *Wallet) MasterKeyBySeed(seedHex string) (*KeyInfo, error) {
+	seedBytes, err := hex.DecodeString(seedHex)
+	if err != nil {
+		return nil, err
+	}
+	masterKey, err := bip32.NewMasterKey(seedBytes)
+	if err != nil {
+		return nil, err
+	}
+	return w.keyInfoOfKey(masterKey)
 }
 
 func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) {

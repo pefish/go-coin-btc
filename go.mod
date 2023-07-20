@@ -4,6 +4,8 @@ go 1.20
 
 require (
 	github.com/BurntSushi/toml v0.3.1 // indirect
+	github.com/FactomProject/basen v0.0.0-20150613233007-fe3947df716e // indirect
+	github.com/FactomProject/btcutilecc v0.0.0-20130527213604-d3a63a5752ec // indirect
 	github.com/aead/siphash v1.0.1 // indirect
 	github.com/btcsuite/btcd v0.23.4 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.1.3 // indirect
@@ -30,8 +32,11 @@ require (
 	github.com/pefish/go-http v0.5.12 // indirect
 	github.com/pefish/go-logger v0.4.16 // indirect
 	github.com/pefish/go-reflect v0.2.2 // indirect
+	github.com/pefish/go-test-assert v0.0.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20210819022825-2ae1ddf74ef7 // indirect
+	github.com/tyler-smith/go-bip32 v1.0.0 // indirect
+	github.com/tyler-smith/go-bip39 v1.1.0 // indirect
 	go.uber.org/atomic v1.5.0 // indirect
 	go.uber.org/multierr v1.3.0 // indirect
 	go.uber.org/tools v0.0.0-20190618225709-2cfd321de3ee // indirect

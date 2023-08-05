@@ -180,7 +180,7 @@ func (w *Wallet) MasterKeyBySeed(seedHex string) (*KeyInfo, error) {
 	return w.keyInfoOfKey(masterKey)
 }
 
-func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) {
+func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) *Wallet {
 	w.RpcClient = btc_rpc_client.NewBtcRpcClient(
 		go_logger.Logger,
 		3*time.Second,
@@ -188,6 +188,7 @@ func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) {
 		rpcServerConfig.Username,
 		rpcServerConfig.Password,
 	)
+	return w
 }
 
 func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (*ord.InscriptionTool, error) {

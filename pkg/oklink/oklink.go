@@ -55,7 +55,7 @@ func (oc *OklinkClient) GetInscription(inscriptionId string) (*GetInscriptionRes
 		Msg  string `json:"msg"`
 		Code string `json:"code"`
 	}
-	_, err := go_http.NewHttpRequester(go_http.WithTimeout(oc.timeout), go_http.WithLogger(oc.logger)).GetForStruct(go_http.RequestParam{
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(oc.timeout), go_http.WithLogger(oc.logger)).GetForStruct(go_http.RequestParam{
 		Url: fmt.Sprintf("%s/api/v5/explorer/btc/inscriptions-list", oc.baseUrl),
 		Params: map[string]interface{}{
 			"inscriptionId": inscriptionId,

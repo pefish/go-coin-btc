@@ -66,7 +66,7 @@ func (brc *BtcRpcClient) GetRawTransaction(txId string) (*GetRawTransactionResul
 		Result *GetRawTransactionResult `json:"result"`
 		Error  *string                  `json:"error"`
 	}
-	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -103,7 +103,7 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListT
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -140,7 +140,7 @@ func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -172,7 +172,7 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",

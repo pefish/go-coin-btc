@@ -15,3 +15,12 @@ func TestOklinkClient_GetInscription(t *testing.T) {
 	}
 	fmt.Println(result)
 }
+
+func TestOklinkClient_AddressInfo(t *testing.T) {
+	c := NewOklinkClient(go_logger.Logger, 5*time.Second, "")
+	result, err := c.AddressInfo("bc1plk3ujd2xzp5660tpl0llekvkzr0u8knckgauwdde9k5ssl5wa09qvvja8j")
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Println(result)
+}

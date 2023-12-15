@@ -77,3 +77,38 @@ func (oc *OklinkClient) GetInscription(inscriptionId string) (*GetInscriptionRes
 	}
 	return nil, fmt.Errorf("inscription %s not found", inscriptionId)
 }
+
+type AddressInfoResult struct {
+	Address              string `json:"address"`
+	Balance              string `json:"balance"`
+	TransactionCount     string `json:"transactionCount"`
+	SendAmount           string `json:"sendAmount"`
+	ReceiveAmount        string `json:"receiveAmount"`
+	FirstTransactionTime string `json:"firstTransactionTime"`
+	LastTransactionTime  string `json:"lastTransactionTime"`
+}
+
+func (oc *OklinkClient) AddressInfo(address string) (*AddressInfoResult, error) {
+	var httpResult struct {
+		Data []AddressInfoResult `json:"data"`
+		Msg  string              `json:"msg"`
+		Code string              `json:"code"`
+	}
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(oc.timeout), go_http.WithLogger(oc.logger)).GetForStruct(go_http.RequestParam{
+		Url: fmt.Sprintf("%s/api/v5/explorer/address/address-summary", oc.baseUrl),
+		Params: map[string]interface{}{
+			"chainShortName": "BTC",
+			"address":        address,
+		},
+		Headers: map[string]interface{}{
+			"Ok-Access-Key": oc.key,
+		},
+	}, &httpResult)
+	if err != nil {
+		return nil, err
+	}
+	if httpResult.Code != "0" {
+		return nil, fmt.Errorf(httpResult.Msg)
+	}
+	return &httpResult.Data[0], nil
+}

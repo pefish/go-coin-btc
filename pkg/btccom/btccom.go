@@ -115,3 +115,36 @@ func (bc *BtcComClient) ListUnspent(address string) ([]ListUnspentResult, error)
 		page++
 	}
 }
+
+type AddressInfoResult struct {
+	Address             string `json:"address"`
+	Balance             uint64 `json:"balance"`
+	Received            uint64 `json:"received"`
+	Sent                uint64 `json:"sent"`
+	TxCount             uint64 `json:"tx_count"`
+	UnconfirmedReceived uint64 `json:"unconfirmed_received"`
+	UnconfirmedSent     uint64 `json:"unconfirmed_sent"`
+	UnconfirmedTxCount  uint64 `json:"unconfirmed_tx_count"`
+	UnspentTxCount      uint64 `json:"unspent_tx_count"`
+	FirstTx             string `json:"first_tx"`
+	LastTx              string `json:"last_tx"`
+}
+
+func (bc *BtcComClient) AddressInfo(address string) (*AddressInfoResult, error) {
+	var httpResult struct {
+		Data    AddressInfoResult `json:"data"`
+		Message string            `json:"message"`
+		Status  string            `json:"status"`
+	}
+	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(bc.timeout), go_http.WithLogger(bc.logger)).GetForStruct(go_http.RequestParam{
+		Url: fmt.Sprintf("%s/v3/address/%s", bc.baseUrl, address),
+	}, &httpResult)
+	if err != nil {
+		return nil, err
+	}
+	if httpResult.Status != "success" {
+		return nil, fmt.Errorf(httpResult.Message)
+	}
+
+	return &httpResult.Data, nil
+}

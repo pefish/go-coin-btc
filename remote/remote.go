@@ -161,7 +161,7 @@ func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
 	if result.Error != nil {
 		return "", fmt.Errorf((*result.Error).Message)
 	}
-	return go_decimal.Decimal.Start(result.Result.Feerate).MustShiftedBy(5).EndForString(), nil
+	return go_decimal.Decimal.MustStart(result.Result.Feerate).MustShiftedBy(5).EndForString(), nil
 }
 
 func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {

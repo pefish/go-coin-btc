@@ -26,5 +26,5 @@ func GetTxOutByOutPoint(rpcClient *btc_rpc_client.BtcRpcClient, outPoint *wire.O
 		return nil, err
 	}
 
-	return wire.NewTxOut(go_decimal.Decimal.Start(tx.Vout[outPoint.Index].Value).MustShiftedBy(8).EndForInt64(), pkScriptBytes), nil
+	return wire.NewTxOut(go_decimal.Decimal.MustStart(tx.Vout[outPoint.Index].Value).MustShiftedBy(8).MustEndForInt64(), pkScriptBytes), nil
 }

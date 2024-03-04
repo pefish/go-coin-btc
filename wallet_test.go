@@ -3,19 +3,20 @@ package go_coin_btc
 import (
 	"encoding/hex"
 	"fmt"
+	"testing"
+
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/chaincfg/chainhash"
 	"github.com/btcsuite/btcd/wire"
 	go_logger "github.com/pefish/go-logger"
-	"github.com/pefish/go-test"
-	"testing"
+	go_test_ "github.com/pefish/go-test"
 )
 
 func TestWallet_BuildTx(t *testing.T) {
 	w := NewWallet(&chaincfg.MainNetParams)
 	w.InitRpcClient(&RpcServerConfig{
-		Url:      "",
+		Url:      "https://bitcoin-mainnet-archive.allthatnode.com",
 		Username: "",
 		Password: "",
 	})
@@ -114,4 +115,12 @@ func TestWallet_AddressFromPubKey(t *testing.T) {
 	address4, err := w.AddressFromPubKey("025753c8d80dc0e6f35b79fa45eef59d2610fae76c59754ebecff43781eac55ed2", ADDRESS_TYPE_P2TR)
 	go_test_.Equal(t, nil, err)
 	go_test_.Equal(t, "bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn", address4)
+}
+
+func TestWallet_KeyInfoFromWif(t *testing.T) {
+	w := NewWallet(&chaincfg.MainNetParams)
+	keyInfo, err := w.KeyInfoFromWif("Kws7ckMngrpmRXXSrL7X3MhiK5X5FXTUzT4w8DjhVEM7V8qNTbDR")
+	go_test_.Equal(t, nil, err)
+	go_test_.Equal(t, "025753c8d80dc0e6f35b79fa45eef59d2610fae76c59754ebecff43781eac55ed2", keyInfo.PubKey)
+	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", keyInfo.PrivKey)
 }

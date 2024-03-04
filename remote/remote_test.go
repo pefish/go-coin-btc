@@ -2,16 +2,17 @@ package btc_rpc_client
 
 import (
 	"fmt"
-	go_logger "github.com/pefish/go-logger"
 	"testing"
 	"time"
+
+	go_logger "github.com/pefish/go-logger"
 )
 
 func TestBtcRpcClient_SendRawTransaction(t *testing.T) {
 	c := NewBtcRpcClient(
 		go_logger.Logger,
 		3*time.Second,
-		"",
+		"https://bitcoin-mainnet-archive.allthatnode.com",
 		"",
 		"",
 	)

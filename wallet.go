@@ -4,6 +4,10 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"strconv"
+	"strings"
+	"time"
+
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
@@ -17,9 +21,6 @@ import (
 	go_logger "github.com/pefish/go-logger"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
-	"strconv"
-	"strings"
-	"time"
 )
 
 type Wallet struct {
@@ -104,6 +105,21 @@ func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (stri
 		return addrObj.String(), nil
 	}
 	return "", fmt.Errorf("address type error")
+}
+
+func (w *Wallet) KeyInfoFromWif(wif string) (*KeyInfo, error) {
+	wifInfo, err := btcutil.DecodeWIF(wif)
+	if err != nil {
+		return nil, err
+	}
+	privK := wifInfo.PrivKey
+	pubK := privK.PubKey()
+
+	return &KeyInfo{
+		Wif:     wif,
+		PubKey:  hex.EncodeToString(pubK.SerializeCompressed()),
+		PrivKey: hex.EncodeToString(privK.Serialize()),
+	}, nil
 }
 
 func (w *Wallet) DeriveBySeedPath(seedHex string, path string) (*KeyInfo, error) {

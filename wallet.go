@@ -223,7 +223,7 @@ func (w *Wallet) GetTxHex(tx *wire.MsgTx) (string, error) {
 
 type OutPoint struct {
 	Hash  string
-	Index uint32
+	Index uint64
 }
 
 type OutPointWithPriv struct {
@@ -232,7 +232,7 @@ type OutPointWithPriv struct {
 }
 
 func (w *Wallet) BuildTx(
-	outPointList []*OutPointWithPriv,
+	outPointWithPrivs []*OutPointWithPriv,
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
@@ -244,14 +244,14 @@ func (w *Wallet) BuildTx(
 	tx := wire.NewMsgTx(wire.TxVersion)
 
 	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
-	for i := range outPointList {
-		hash, err := chainhash.NewHashFromStr(outPointList[i].OutPoint.Hash)
+	for _, outPointWithPriv := range outPointWithPrivs {
+		hash, err := chainhash.NewHashFromStr(outPointWithPriv.OutPoint.Hash)
 		if err != nil {
 			return nil, err
 		}
 		outPoint := wire.OutPoint{
 			Hash:  *hash,
-			Index: outPointList[i].OutPoint.Index,
+			Index: uint32(outPointWithPriv.OutPoint.Index),
 		}
 		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
 		if err != nil {
@@ -307,7 +307,7 @@ func (w *Wallet) BuildTx(
 
 	// sign
 	for i, txIn := range tx.TxIn {
-		privBytes, err := hex.DecodeString(outPointList[i].Priv)
+		privBytes, err := hex.DecodeString(outPointWithPrivs[i].Priv)
 		if err != nil {
 			return nil, err
 		}

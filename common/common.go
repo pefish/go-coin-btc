@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/hex"
+
 	"github.com/btcsuite/btcd/wire"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_decimal "github.com/pefish/go-decimal"

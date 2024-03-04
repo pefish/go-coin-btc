@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
+	"time"
+
 	"github.com/btcsuite/btcd/wire"
-	go_decimal "github.com/pefish/go-decimal"
 	go_http "github.com/pefish/go-http"
 	go_logger "github.com/pefish/go-logger"
-	"time"
 )
 
 type BtcRpcClient struct {
@@ -130,7 +130,8 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListT
 	return result.Result, nil
 }
 
-func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
+// return sats/vb
+func (brc *BtcRpcClient) EstimateSmartFee() (float64, error) {
 	var result struct {
 		Result struct {
 			Feerate float64 `json:"feerate"`
@@ -156,12 +157,12 @@ func (brc *BtcRpcClient) EstimateSmartFee() (string, error) {
 		},
 	}, &result)
 	if err != nil {
-		return "", err
+		return 0, err
 	}
 	if result.Error != nil {
-		return "", fmt.Errorf((*result.Error).Message)
+		return 0, fmt.Errorf((*result.Error).Message)
 	}
-	return go_decimal.Decimal.MustStart(result.Result.Feerate).MustShiftedBy(5).EndForString(), nil
+	return result.Result.Feerate * 100000, nil
 }
 
 func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {

@@ -236,7 +236,7 @@ func (w *Wallet) BuildTx(
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
-	feeRate uint64,
+	feeRate float64,
 ) (*wire.MsgTx, error) {
 	targetValue := btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
 
@@ -285,7 +285,9 @@ func (w *Wallet) BuildTx(
 			return nil, err
 		}
 		tx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
-		fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+
+		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(tx)))
+		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
 		changeAmount := totalSenderAmount - targetValue - fee
 		if changeAmount > 0 {
 			tx.TxOut[len(tx.TxOut)-1].Value = int64(changeAmount)
@@ -299,7 +301,8 @@ func (w *Wallet) BuildTx(
 			}
 		}
 	} else {
-		fee := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(tx)))
+		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
 		if totalSenderAmount-targetValue-fee < 0 {
 			return nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
 		}

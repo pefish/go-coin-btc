@@ -246,7 +246,7 @@ func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (
 }
 
 func (w *Wallet) PayToAddrScript(address string) (
-	script []byte,
+	pkScript []byte,
 	err error,
 ) {
 	targetAddressObj, err := btcutil.DecodeAddress(address, w.Net)
@@ -321,32 +321,36 @@ func (w *Wallet) BuildTx(
 		totalSenderAmount += btcutil.Amount(txOut.Value)
 	}
 
-	targetScriptPubKey, err := w.PayToAddrScript(targetAddress)
+	pkScript, err := w.PayToAddrScript(targetAddress)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), targetScriptPubKey))
+	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScript))
 	newUtxos = append(newUtxos, &UTXO{
-		Address: targetAddress,
-		Index:   uint64(len(newUtxos)),
+		Address:  targetAddress,
+		Index:    uint64(len(newUtxos)),
+		PkScript: pkScript,
+		Value:    targetValueBtc,
 	})
 	if changeAddress != "" {
-		changeScriptPubKey, err := w.PayToAddrScript(changeAddress)
+		pkScript, err := w.PayToAddrScript(changeAddress)
 		if err != nil {
 			return nil, nil, err
 		}
-		msgTx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
-		newUtxos = append(newUtxos, &UTXO{
-			Address: changeAddress,
-			Index:   uint64(len(newUtxos)),
-		})
+		msgTx.AddTxOut(wire.NewTxOut(0, pkScript))
 
 		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
 		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
 		changeAmount := totalSenderAmount - targetValue - fee
 		if changeAmount > 0 {
 			msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
+			newUtxos = append(newUtxos, &UTXO{
+				Address:  changeAddress,
+				Index:    uint64(len(newUtxos)),
+				PkScript: pkScript,
+				Value:    float64(changeAmount) / 100000000,
+			})
 		} else {
 			msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1]
 			if changeAmount < 0 {

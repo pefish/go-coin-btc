@@ -5,6 +5,7 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
+	go_decimal "github.com/pefish/go-decimal"
 	"github.com/pkg/errors"
 )
 
@@ -29,5 +30,8 @@ func GetTxOutByOutPoint(rpcClient *btc_rpc_client.BtcRpcClient, outPoint *wire.O
 		return nil, err
 	}
 
-	return wire.NewTxOut(int64(tx.Vout[outPoint.Index].Value*100000000), pkScriptBytes), nil
+	return wire.NewTxOut(
+		go_decimal.Decimal.MustStart(tx.Vout[outPoint.Index].Value).MustShiftedBy(8).MustEndForInt64(),
+		pkScriptBytes,
+	), nil
 }

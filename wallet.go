@@ -3,7 +3,6 @@ package go_coin_btc
 import (
 	"bytes"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -303,22 +302,10 @@ func (w *Wallet) BuildTx(
 		}
 		var txOut *wire.TxOut
 		if utxoWithPriv.Utxo.PkScript == "" {
-			getRawTransactionResult, err := w.RpcClient.GetRawTransaction(utxoWithPriv.Utxo.TxId)
+			txOut, err = common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
 			if err != nil {
 				return nil, nil, err
 			}
-			if int(outPoint.Index) >= len(getRawTransactionResult.Vout) {
-				return nil, nil, errors.New("Err out point.")
-			}
-			pkScriptBytes, err := hex.DecodeString(getRawTransactionResult.Vout[outPoint.Index].ScriptPubKey.Hex)
-			if err != nil {
-				return nil, nil, err
-			}
-
-			txOut = wire.NewTxOut(
-				int64(getRawTransactionResult.Vout[outPoint.Index].Value*100000000),
-				pkScriptBytes,
-			)
 		} else {
 			pkScriptBytes, err := hex.DecodeString(utxoWithPriv.Utxo.PkScript)
 			if err != nil {
@@ -326,7 +313,7 @@ func (w *Wallet) BuildTx(
 			}
 
 			txOut = wire.NewTxOut(
-				int64(utxoWithPriv.Utxo.Value*100000000),
+				go_decimal.Decimal.MustStart(utxoWithPriv.Utxo.Value).MustShiftedBy(8).MustEndForInt64(),
 				pkScriptBytes,
 			)
 		}
@@ -358,8 +345,8 @@ func (w *Wallet) BuildTx(
 		}
 		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
 
-		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
-		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
+		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64())
 		changeAmount := totalSenderAmount - targetValue - fee
 		if changeAmount > 0 {
 			msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
@@ -367,20 +354,22 @@ func (w *Wallet) BuildTx(
 				Address:  changeAddress,
 				Index:    uint64(len(newUtxos)),
 				PkScript: hex.EncodeToString(pkScriptBytes),
-				Value:    float64(changeAmount) / 100000000,
+				Value:    go_decimal.Decimal.MustStart(changeAmount).MustUnShiftedBy(8).MustEndForFloat64(),
 			})
 		} else {
 			msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1]
 			if changeAmount < 0 {
-				feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))) * btcutil.Amount(feeRate)
+				txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+				feeWithoutChange := btcutil.Amount(go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64())
 				if totalSenderAmount-targetValue-feeWithoutChange < 0 {
 					return nil, nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
 				}
 			}
 		}
 	} else {
-		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
-		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
+		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64())
+
 		if totalSenderAmount-targetValue-fee < 0 {
 			return nil, nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
 		}
@@ -417,7 +406,6 @@ func (w *Wallet) BuildTx(
 			}
 			txIn.Witness = witness
 		case txscript.WitnessV1TaprootTy:
-			fmt.Printf("i: %d, txOut.Value: %d, txOut.PkScript: %s, priv: %s\n", i, txOut.Value, hex.EncodeToString(txOut.PkScript), utxoWithPrivs[i].Priv)
 			witness, err := txscript.TaprootWitnessSignature(
 				msgTx,
 				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),

@@ -245,55 +245,11 @@ func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (
 	return hex.EncodeToString(buf.Bytes()), nil
 }
 
-type OutPoint struct {
-	Hash  string
-	Index uint64
-}
-
-type OutPointWithPriv struct {
-	OutPoint OutPoint
-	Priv     string
-}
-
-func (w *Wallet) BuildTx(
-	outPointWithPrivs []*OutPointWithPriv,
-	changeAddress string,
-	targetAddress string,
-	targetValueBtc float64,
-	feeRate float64,
-) (
-	msgTx *wire.MsgTx,
+func (w *Wallet) PayToAddrScript(address string) (
+	script []byte,
 	err error,
 ) {
-	targetValue := btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
-
-	totalSenderAmount := btcutil.Amount(0)
-	tx := wire.NewMsgTx(wire.TxVersion)
-
-	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
-	for _, outPointWithPriv := range outPointWithPrivs {
-		hash, err := chainhash.NewHashFromStr(outPointWithPriv.OutPoint.Hash)
-		if err != nil {
-			return nil, err
-		}
-		outPoint := wire.OutPoint{
-			Hash:  *hash,
-			Index: uint32(outPointWithPriv.OutPoint.Index),
-		}
-		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
-		if err != nil {
-			return nil, err
-		}
-		prevOutputFetcher.AddPrevOut(outPoint, txOut)
-
-		in := wire.NewTxIn(&outPoint, nil, nil)
-		in.Sequence = common.DefaultSequenceNum
-		tx.AddTxIn(in)
-
-		totalSenderAmount += btcutil.Amount(txOut.Value)
-	}
-
-	targetAddressObj, err := btcutil.DecodeAddress(targetAddress, w.Net)
+	targetAddressObj, err := btcutil.DecodeAddress(address, w.Net)
 	if err != nil {
 		return nil, err
 	}
@@ -301,45 +257,107 @@ func (w *Wallet) BuildTx(
 	if err != nil {
 		return nil, err
 	}
-	tx.AddTxOut(wire.NewTxOut(int64(targetValue), targetScriptPubKey))
-	if changeAddress != "" {
-		changeAddressObj, err := btcutil.DecodeAddress(changeAddress, w.Net)
-		if err != nil {
-			return nil, err
-		}
-		changeScriptPubKey, err := txscript.PayToAddrScript(changeAddressObj)
-		if err != nil {
-			return nil, err
-		}
-		tx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
+	return targetScriptPubKey, nil
+}
 
-		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(tx)))
+type UTXO struct {
+	Address string
+	Hash    string
+	Index   uint64
+}
+
+type UTXOWithPriv struct {
+	Utxo UTXO
+	Priv string
+}
+
+func (w *Wallet) BuildTx(
+	utxoWithPrivs []*UTXOWithPriv,
+	changeAddress string,
+	targetAddress string,
+	targetValueBtc float64,
+	feeRate float64,
+) (
+	msgTx *wire.MsgTx,
+	newUtxos []*UTXO,
+	err error,
+) {
+	targetValue := btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
+
+	totalSenderAmount := btcutil.Amount(0)
+	msgTx = wire.NewMsgTx(wire.TxVersion)
+
+	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
+	for _, utxoWithPriv := range utxoWithPrivs {
+		hash, err := chainhash.NewHashFromStr(utxoWithPriv.Utxo.Hash)
+		if err != nil {
+			return nil, nil, err
+		}
+		outPoint := wire.OutPoint{
+			Hash:  *hash,
+			Index: uint32(utxoWithPriv.Utxo.Index),
+		}
+		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
+		if err != nil {
+			return nil, nil, err
+		}
+		prevOutputFetcher.AddPrevOut(outPoint, txOut)
+
+		in := wire.NewTxIn(&outPoint, nil, nil)
+		in.Sequence = common.DefaultSequenceNum
+		msgTx.AddTxIn(in)
+
+		totalSenderAmount += btcutil.Amount(txOut.Value)
+	}
+
+	targetScriptPubKey, err := w.PayToAddrScript(targetAddress)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), targetScriptPubKey))
+	newUtxos = append(newUtxos, &UTXO{
+		Address: targetAddress,
+		Index:   uint64(len(newUtxos)),
+	})
+	if changeAddress != "" {
+		changeScriptPubKey, err := w.PayToAddrScript(changeAddress)
+		if err != nil {
+			return nil, nil, err
+		}
+		msgTx.AddTxOut(wire.NewTxOut(0, changeScriptPubKey))
+		newUtxos = append(newUtxos, &UTXO{
+			Address: changeAddress,
+			Index:   uint64(len(newUtxos)),
+		})
+
+		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
 		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
 		changeAmount := totalSenderAmount - targetValue - fee
 		if changeAmount > 0 {
-			tx.TxOut[len(tx.TxOut)-1].Value = int64(changeAmount)
+			msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
 		} else {
-			tx.TxOut = tx.TxOut[:len(tx.TxOut)-1]
+			msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1]
 			if changeAmount < 0 {
-				feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(tx))) * btcutil.Amount(feeRate)
+				feeWithoutChange := btcutil.Amount(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))) * btcutil.Amount(feeRate)
 				if totalSenderAmount-targetValue-feeWithoutChange < 0 {
-					return nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
+					return nil, nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
 				}
 			}
 		}
 	} else {
-		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(tx)))
+		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
 		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
 		if totalSenderAmount-targetValue-fee < 0 {
-			return nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
+			return nil, nil, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
 		}
 	}
 
 	// sign
-	for i, txIn := range tx.TxIn {
-		privBytes, err := hex.DecodeString(outPointWithPrivs[i].Priv)
+	for i, txIn := range msgTx.TxIn {
+		privBytes, err := hex.DecodeString(utxoWithPrivs[i].Priv)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		privObj, _ := btcec.PrivKeyFromBytes(privBytes)
 
@@ -347,13 +365,13 @@ func (w *Wallet) BuildTx(
 
 		scriptType, _, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, w.Net)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		switch scriptType {
 		case txscript.WitnessV0PubKeyHashTy:
 			witness, err := txscript.WitnessSignature(
-				tx,
-				txscript.NewTxSigHashes(tx, prevOutputFetcher),
+				msgTx,
+				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
 				i,
 				txOut.Value,
 				txOut.PkScript,
@@ -362,13 +380,13 @@ func (w *Wallet) BuildTx(
 				true,
 			)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			txIn.Witness = witness
 		case txscript.WitnessV1TaprootTy:
 			witness, err := txscript.TaprootWitnessSignature(
-				tx,
-				txscript.NewTxSigHashes(tx, prevOutputFetcher),
+				msgTx,
+				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
 				i,
 				txOut.Value,
 				txOut.PkScript,
@@ -376,15 +394,19 @@ func (w *Wallet) BuildTx(
 				privObj,
 			)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			txIn.Witness = witness
 		default:
-			return nil, fmt.Errorf("script type not be supported")
+			return nil, nil, fmt.Errorf("script type not be supported")
 		}
 	}
 
-	return tx, nil
+	for i := range newUtxos {
+		newUtxos[i].Hash = msgTx.TxHash().String()
+	}
+
+	return msgTx, newUtxos, nil
 }
 
 func (w *Wallet) DecodeInscriptionScript(witness1Str string) (

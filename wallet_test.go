@@ -18,10 +18,10 @@ func TestWallet_BuildTx(t *testing.T) {
 		Password: "",
 	})
 
-	tx, err := w.BuildTx(
-		[]*OutPointWithPriv{
+	tx, _, err := w.BuildTx(
+		[]*UTXOWithPriv{
 			{
-				OutPoint: OutPoint{
+				Utxo: UTXO{
 					Hash:  "",
 					Index: 0,
 				},

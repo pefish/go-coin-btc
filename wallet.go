@@ -3,6 +3,7 @@ package go_coin_btc
 import (
 	"bytes"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -302,19 +303,32 @@ func (w *Wallet) BuildTx(
 		}
 		var txOut *wire.TxOut
 		if utxoWithPriv.Utxo.PkScript == "" {
-			txOut, err = common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
+			getRawTransactionResult, err := w.RpcClient.GetRawTransaction(utxoWithPriv.Utxo.TxId)
 			if err != nil {
 				return nil, nil, err
 			}
+			if int(outPoint.Index) >= len(getRawTransactionResult.Vout) {
+				return nil, nil, errors.New("Err out point.")
+			}
+			pkScriptBytes, err := hex.DecodeString(getRawTransactionResult.Vout[outPoint.Index].ScriptPubKey.Hex)
+			if err != nil {
+				return nil, nil, err
+			}
+
+			txOut = wire.NewTxOut(
+				int64(getRawTransactionResult.Vout[outPoint.Index].Value*100000000),
+				pkScriptBytes,
+			)
 		} else {
 			pkScriptBytes, err := hex.DecodeString(utxoWithPriv.Utxo.PkScript)
 			if err != nil {
 				return nil, nil, err
 			}
-			txOut = &wire.TxOut{
-				Value:    int64(utxoWithPriv.Utxo.Value * 100000000),
-				PkScript: pkScriptBytes,
-			}
+
+			txOut = wire.NewTxOut(
+				int64(utxoWithPriv.Utxo.Value*100000000),
+				pkScriptBytes,
+			)
 		}
 		prevOutputFetcher.AddPrevOut(outPoint, txOut)
 
@@ -403,6 +417,7 @@ func (w *Wallet) BuildTx(
 			}
 			txIn.Witness = witness
 		case txscript.WitnessV1TaprootTy:
+			fmt.Printf("i: %d, txOut.Value: %d, txOut.PkScript: %s, priv: %s\n", i, txOut.Value, hex.EncodeToString(txOut.PkScript), utxoWithPrivs[i].Priv)
 			witness, err := txscript.TaprootWitnessSignature(
 				msgTx,
 				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),

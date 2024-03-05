@@ -264,6 +264,9 @@ type UTXO struct {
 	Address string
 	Hash    string
 	Index   uint64
+
+	Value    float64
+	PkScript []byte
 }
 
 type UTXOWithPriv struct {
@@ -297,9 +300,17 @@ func (w *Wallet) BuildTx(
 			Hash:  *hash,
 			Index: uint32(utxoWithPriv.Utxo.Index),
 		}
-		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
-		if err != nil {
-			return nil, nil, err
+		var txOut *wire.TxOut
+		if utxoWithPriv.Utxo.PkScript == nil {
+			txOut, err = common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
+			if err != nil {
+				return nil, nil, err
+			}
+		} else {
+			txOut = &wire.TxOut{
+				Value:    int64(utxoWithPriv.Utxo.Value * 100000000),
+				PkScript: utxoWithPriv.Utxo.PkScript,
+			}
 		}
 		prevOutputFetcher.AddPrevOut(outPoint, txOut)
 
@@ -398,7 +409,7 @@ func (w *Wallet) BuildTx(
 			}
 			txIn.Witness = witness
 		default:
-			return nil, nil, fmt.Errorf("script type not be supported")
+			return nil, nil, fmt.Errorf("Script type not be supported.")
 		}
 	}
 

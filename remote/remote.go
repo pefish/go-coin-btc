@@ -184,7 +184,7 @@ func (brc *BtcRpcClient) EstimateSmartFee() (
 }
 
 func (brc *BtcRpcClient) SendRawTransaction(txHex string) (
-	hash string,
+	txId string,
 	err error,
 ) {
 	var result struct {
@@ -222,7 +222,7 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (
 }
 
 func (brc *BtcRpcClient) SendMsgTx(tx *wire.MsgTx) (
-	hash string,
+	txId string,
 	err error,
 ) {
 	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))

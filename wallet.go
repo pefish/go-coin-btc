@@ -266,7 +266,7 @@ type UTXO struct {
 	Index   uint64
 
 	Value    float64
-	PkScript []byte
+	PkScript string
 }
 
 type UTXOWithPriv struct {
@@ -301,15 +301,19 @@ func (w *Wallet) BuildTx(
 			Index: uint32(utxoWithPriv.Utxo.Index),
 		}
 		var txOut *wire.TxOut
-		if utxoWithPriv.Utxo.PkScript == nil {
+		if utxoWithPriv.Utxo.PkScript == "" {
 			txOut, err = common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
 			if err != nil {
 				return nil, nil, err
 			}
 		} else {
+			pkScriptBytes, err := hex.DecodeString(utxoWithPriv.Utxo.PkScript)
+			if err != nil {
+				return nil, nil, err
+			}
 			txOut = &wire.TxOut{
 				Value:    int64(utxoWithPriv.Utxo.Value * 100000000),
-				PkScript: utxoWithPriv.Utxo.PkScript,
+				PkScript: pkScriptBytes,
 			}
 		}
 		prevOutputFetcher.AddPrevOut(outPoint, txOut)
@@ -321,24 +325,24 @@ func (w *Wallet) BuildTx(
 		totalSenderAmount += btcutil.Amount(txOut.Value)
 	}
 
-	pkScript, err := w.PayToAddrScript(targetAddress)
+	pkScriptBytes, err := w.PayToAddrScript(targetAddress)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScript))
+	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
 	newUtxos = append(newUtxos, &UTXO{
 		Address:  targetAddress,
 		Index:    uint64(len(newUtxos)),
-		PkScript: pkScript,
+		PkScript: hex.EncodeToString(pkScriptBytes),
 		Value:    targetValueBtc,
 	})
 	if changeAddress != "" {
-		pkScript, err := w.PayToAddrScript(changeAddress)
+		pkScriptBytes, err := w.PayToAddrScript(changeAddress)
 		if err != nil {
 			return nil, nil, err
 		}
-		msgTx.AddTxOut(wire.NewTxOut(0, pkScript))
+		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
 
 		feeFloat := feeRate * float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
 		fee := btcutil.Amount(go_decimal.Decimal.MustStart(feeFloat).RoundUp(0).MustEndForInt64())
@@ -348,7 +352,7 @@ func (w *Wallet) BuildTx(
 			newUtxos = append(newUtxos, &UTXO{
 				Address:  changeAddress,
 				Index:    uint64(len(newUtxos)),
-				PkScript: pkScript,
+				PkScript: hex.EncodeToString(pkScriptBytes),
 				Value:    float64(changeAmount) / 100000000,
 			})
 		} else {

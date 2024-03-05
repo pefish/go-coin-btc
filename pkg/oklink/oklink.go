@@ -2,10 +2,11 @@ package btccom
 
 import (
 	"fmt"
-	go_http "github.com/pefish/go-http"
-	go_logger "github.com/pefish/go-logger"
 	"strings"
 	"time"
+
+	go_http "github.com/pefish/go-http"
+	go_logger "github.com/pefish/go-logger"
 )
 
 type OklinkClient struct {
@@ -43,7 +44,10 @@ type GetInscriptionResult struct {
 	Time              string `json:"time"`
 }
 
-func (oc *OklinkClient) GetInscription(inscriptionId string) (*GetInscriptionResult, error) {
+func (oc *OklinkClient) GetInscription(inscriptionId string) (
+	getInscriptionResult *GetInscriptionResult,
+	err error,
+) {
 	var httpResult struct {
 		Data []struct {
 			InscriptionsList []GetInscriptionResult `json:"inscriptionsList"`
@@ -55,7 +59,10 @@ func (oc *OklinkClient) GetInscription(inscriptionId string) (*GetInscriptionRes
 		Msg  string `json:"msg"`
 		Code string `json:"code"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(oc.timeout), go_http.WithLogger(oc.logger)).GetForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(oc.timeout),
+		go_http.WithLogger(oc.logger),
+	).GetForStruct(go_http.RequestParam{
 		Url: fmt.Sprintf("%s/api/v5/explorer/btc/inscriptions-list", oc.baseUrl),
 		Params: map[string]interface{}{
 			"inscriptionId": inscriptionId,
@@ -88,13 +95,19 @@ type AddressInfoResult struct {
 	LastTransactionTime  string `json:"lastTransactionTime"`
 }
 
-func (oc *OklinkClient) AddressInfo(address string) (*AddressInfoResult, error) {
+func (oc *OklinkClient) AddressInfo(address string) (
+	addressInfoResult *AddressInfoResult,
+	err error,
+) {
 	var httpResult struct {
 		Data []AddressInfoResult `json:"data"`
 		Msg  string              `json:"msg"`
 		Code string              `json:"code"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(oc.timeout), go_http.WithLogger(oc.logger)).GetForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(oc.timeout),
+		go_http.WithLogger(oc.logger),
+	).GetForStruct(go_http.RequestParam{
 		Url: fmt.Sprintf("%s/api/v5/explorer/address/address-summary", oc.baseUrl),
 		Params: map[string]interface{}{
 			"chainShortName": "BTC",

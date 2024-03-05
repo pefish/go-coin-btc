@@ -2,9 +2,10 @@ package btccom
 
 import (
 	"fmt"
+	"time"
+
 	go_http "github.com/pefish/go-http"
 	go_logger "github.com/pefish/go-logger"
-	"time"
 )
 
 type BtcComClient struct {
@@ -42,7 +43,10 @@ type ListTransactionsResult struct {
 	Confirmations uint64 `json:"confirmations"`
 }
 
-func (bc *BtcComClient) ListTransactions(page uint64, address string) ([]ListTransactionsResult, error) {
+func (bc *BtcComClient) ListTransactions(page uint64, address string) (
+	transactions []ListTransactionsResult,
+	err error,
+) {
 	if page == 0 {
 		return nil, fmt.Errorf("page can not be 0")
 	}
@@ -56,7 +60,10 @@ func (bc *BtcComClient) ListTransactions(page uint64, address string) ([]ListTra
 		Message string `json:"message"`
 		Status  string `json:"status"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(bc.timeout), go_http.WithLogger(bc.logger)).GetForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(bc.timeout),
+		go_http.WithLogger(bc.logger),
+	).GetForStruct(go_http.RequestParam{
 		Url: fmt.Sprintf("%s/v3/address/%s/tx", bc.baseUrl, address),
 		Params: map[string]interface{}{
 			"page":     page,
@@ -80,7 +87,10 @@ type ListUnspentResult struct {
 	Confirmations uint64 `json:"confirmations"`
 }
 
-func (bc *BtcComClient) ListUnspent(address string) ([]ListUnspentResult, error) {
+func (bc *BtcComClient) ListUnspent(address string) (
+	listUnspentResult []ListUnspentResult,
+	err error,
+) {
 	results := make([]ListUnspentResult, 0)
 
 	var page uint64 = 1
@@ -94,7 +104,10 @@ func (bc *BtcComClient) ListUnspent(address string) ([]ListUnspentResult, error)
 			Message string `json:"message"`
 			Status  string `json:"status"`
 		}
-		_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(bc.timeout), go_http.WithLogger(bc.logger)).GetForStruct(go_http.RequestParam{
+		_, _, err := go_http.NewHttpRequester(
+			go_http.WithTimeout(bc.timeout),
+			go_http.WithLogger(bc.logger),
+		).GetForStruct(go_http.RequestParam{
 			Url: fmt.Sprintf("%s/v3/address/%s/unspent", bc.baseUrl, address),
 			Params: map[string]interface{}{
 				"page":     page,
@@ -130,13 +143,19 @@ type AddressInfoResult struct {
 	LastTx              string `json:"last_tx"`
 }
 
-func (bc *BtcComClient) AddressInfo(address string) (*AddressInfoResult, error) {
+func (bc *BtcComClient) AddressInfo(address string) (
+	addressInfoResult *AddressInfoResult,
+	err error,
+) {
 	var httpResult struct {
 		Data    AddressInfoResult `json:"data"`
 		Message string            `json:"message"`
 		Status  string            `json:"status"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(bc.timeout), go_http.WithLogger(bc.logger)).GetForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(bc.timeout),
+		go_http.WithLogger(bc.logger),
+	).GetForStruct(go_http.RequestParam{
 		Url: fmt.Sprintf("%s/v3/address/%s", bc.baseUrl, address),
 	}, &httpResult)
 	if err != nil {

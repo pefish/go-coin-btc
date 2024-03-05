@@ -61,12 +61,18 @@ type GetRawTransactionResult struct {
 	TxId          string       `json:"txid"`
 }
 
-func (brc *BtcRpcClient) GetRawTransaction(txId string) (*GetRawTransactionResult, error) {
+func (brc *BtcRpcClient) GetRawTransaction(txId string) (
+	getRawTransactionResult *GetRawTransactionResult,
+	err error,
+) {
 	var result struct {
 		Result *GetRawTransactionResult `json:"result"`
 		Error  *string                  `json:"error"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(brc.timeout),
+		go_http.WithLogger(brc.logger),
+	).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -95,7 +101,10 @@ type ListTransactionsResult struct {
 	TxId string `json:"txid"`
 }
 
-func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListTransactionsResult, error) {
+func (brc *BtcRpcClient) ListTransactions(index uint64, address string) (
+	transactions []ListTransactionsResult,
+	err error,
+) {
 	var result struct {
 		Result []ListTransactionsResult `json:"result"`
 		Error  *struct {
@@ -103,7 +112,10 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListT
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(brc.timeout),
+		go_http.WithLogger(brc.logger),
+	).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -131,7 +143,10 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) ([]ListT
 }
 
 // return sats/vb
-func (brc *BtcRpcClient) EstimateSmartFee() (float64, error) {
+func (brc *BtcRpcClient) EstimateSmartFee() (
+	feeRate float64,
+	err error,
+) {
 	var result struct {
 		Result struct {
 			Feerate float64 `json:"feerate"`
@@ -141,7 +156,10 @@ func (brc *BtcRpcClient) EstimateSmartFee() (float64, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(brc.timeout),
+		go_http.WithLogger(brc.logger),
+	).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -165,7 +183,10 @@ func (brc *BtcRpcClient) EstimateSmartFee() (float64, error) {
 	return result.Result.Feerate * 100000, nil
 }
 
-func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
+func (brc *BtcRpcClient) SendRawTransaction(txHex string) (
+	hash string,
+	err error,
+) {
 	var result struct {
 		Result string `json:"result"`
 		Error  *struct {
@@ -173,7 +194,10 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
 			Message string `json:"message"`
 		} `json:"error"`
 	}
-	_, _, err := go_http.NewHttpRequester(go_http.WithTimeout(brc.timeout), go_http.WithLogger(brc.logger)).PostForStruct(go_http.RequestParam{
+	_, _, err = go_http.NewHttpRequester(
+		go_http.WithTimeout(brc.timeout),
+		go_http.WithLogger(brc.logger),
+	).PostForStruct(go_http.RequestParam{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -197,7 +221,10 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (string, error) {
 	return result.Result, nil
 }
 
-func (brc *BtcRpcClient) SendMsgTx(tx *wire.MsgTx) (string, error) {
+func (brc *BtcRpcClient) SendMsgTx(tx *wire.MsgTx) (
+	hash string,
+	err error,
+) {
 	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
 	if err := tx.Serialize(buf); err != nil {
 		return "", err

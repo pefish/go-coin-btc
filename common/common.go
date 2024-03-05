@@ -14,7 +14,10 @@ const (
 	MinDustValue       = int64(546)
 )
 
-func GetTxOutByOutPoint(rpcClient *btc_rpc_client.BtcRpcClient, outPoint *wire.OutPoint) (*wire.TxOut, error) {
+func GetTxOutByOutPoint(rpcClient *btc_rpc_client.BtcRpcClient, outPoint *wire.OutPoint) (
+	txOut *wire.TxOut,
+	err error,
+) {
 	tx, err := rpcClient.GetRawTransaction(outPoint.Hash.String())
 	if err != nil {
 		return nil, err

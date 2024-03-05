@@ -262,7 +262,7 @@ func (w *Wallet) PayToAddrScript(address string) (
 
 type UTXO struct {
 	Address string
-	Hash    string
+	TxId    string
 	Index   uint64
 
 	Value    float64
@@ -292,12 +292,12 @@ func (w *Wallet) BuildTx(
 
 	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
 	for _, utxoWithPriv := range utxoWithPrivs {
-		hash, err := chainhash.NewHashFromStr(utxoWithPriv.Utxo.Hash)
+		txId, err := chainhash.NewHashFromStr(utxoWithPriv.Utxo.TxId)
 		if err != nil {
 			return nil, nil, err
 		}
 		outPoint := wire.OutPoint{
-			Hash:  *hash,
+			Hash:  *txId,
 			Index: uint32(utxoWithPriv.Utxo.Index),
 		}
 		var txOut *wire.TxOut
@@ -422,7 +422,7 @@ func (w *Wallet) BuildTx(
 	}
 
 	for i := range newUtxos {
-		newUtxos[i].Hash = msgTx.TxHash().String()
+		newUtxos[i].TxId = msgTx.TxHash().String()
 	}
 
 	return msgTx, newUtxos, nil

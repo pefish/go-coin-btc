@@ -22,7 +22,7 @@ func TestWallet_BuildTx(t *testing.T) {
 		[]*UTXOWithPriv{
 			{
 				Utxo: UTXO{
-					Hash:  "",
+					TxId:  "",
 					Index: 0,
 				},
 				Priv: "",

@@ -37,7 +37,7 @@ func TestWallet_BuildTx(t *testing.T) {
 		go_logger.Logger.Error(err)
 		return
 	}
-	go_logger.Logger.Info(w.GetTxHex(tx))
+	go_logger.Logger.Info(w.MsgTxToHex(tx))
 }
 
 func TestWallet_DecodeInscriptionScript(t *testing.T) {

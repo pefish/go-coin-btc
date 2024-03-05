@@ -63,7 +63,10 @@ const (
 	ADDRESS_TYPE_P2TR
 )
 
-func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (string, error) {
+func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (
+	addr string,
+	err error,
+) {
 	pubKeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
 		return "", err
@@ -109,7 +112,10 @@ func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (stri
 	return "", fmt.Errorf("address type error")
 }
 
-func (w *Wallet) KeyInfoFromWif(wif string) (*KeyInfo, error) {
+func (w *Wallet) KeyInfoFromWif(wif string) (
+	keyInfo *KeyInfo,
+	err error,
+) {
 	wifInfo, err := btcutil.DecodeWIF(wif)
 	if err != nil {
 		return nil, err
@@ -124,15 +130,21 @@ func (w *Wallet) KeyInfoFromWif(wif string) (*KeyInfo, error) {
 	}, nil
 }
 
-func (w *Wallet) DeriveBySeedPath(seedHex string, path string) (*KeyInfo, error) {
-	keyInfo, err := w.MasterKeyBySeed(seedHex)
+func (w *Wallet) DeriveBySeedPath(seedHex string, path string) (
+	keyInfo *KeyInfo,
+	err error,
+) {
+	keyInfo, err = w.MasterKeyBySeed(seedHex)
 	if err != nil {
 		return nil, err
 	}
 	return w.DeriveByXprivPath(keyInfo.XPriv, path)
 }
 
-func (w *Wallet) DeriveByXprivPath(xpriv string, path string) (*KeyInfo, error) {
+func (w *Wallet) DeriveByXprivPath(xpriv string, path string) (
+	keyInfo *KeyInfo,
+	err error,
+) {
 	masterKey, err := bip32.B58Deserialize(xpriv)
 	if err != nil {
 		return nil, err
@@ -171,7 +183,10 @@ func (w *Wallet) DeriveByXprivPath(xpriv string, path string) (*KeyInfo, error) 
 	return w.keyInfoOfKey(key)
 }
 
-func (w *Wallet) keyInfoOfKey(key *bip32.Key) (*KeyInfo, error) {
+func (w *Wallet) keyInfoOfKey(key *bip32.Key) (
+	keyInfo *KeyInfo,
+	err error,
+) {
 	privKey, pubK := btcec.PrivKeyFromBytes(key.Key)
 	wifObj, err := btcutil.NewWIF(privKey, w.Net, true)
 	if err != nil {
@@ -186,7 +201,10 @@ func (w *Wallet) keyInfoOfKey(key *bip32.Key) (*KeyInfo, error) {
 	}, nil
 }
 
-func (w *Wallet) MasterKeyBySeed(seedHex string) (*KeyInfo, error) {
+func (w *Wallet) MasterKeyBySeed(seedHex string) (
+	keyInfo *KeyInfo,
+	err error,
+) {
 	seedBytes, err := hex.DecodeString(seedHex)
 	if err != nil {
 		return nil, err
@@ -209,11 +227,17 @@ func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) *Wallet {
 	return w
 }
 
-func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (*ord.InscriptionTool, error) {
+func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (
+	inscriptionTool *ord.InscriptionTool,
+	err error,
+) {
 	return ord.NewInscriptionTool(w.Net, w.RpcClient, request)
 }
 
-func (w *Wallet) GetTxHex(tx *wire.MsgTx) (string, error) {
+func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (
+	txHex string,
+	err error,
+) {
 	var buf bytes.Buffer
 	if err := tx.Serialize(&buf); err != nil {
 		return "", err
@@ -237,7 +261,10 @@ func (w *Wallet) BuildTx(
 	targetAddress string,
 	targetValueBtc float64,
 	feeRate float64,
-) (*wire.MsgTx, error) {
+) (
+	msgTx *wire.MsgTx,
+	err error,
+) {
 	targetValue := btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
 
 	totalSenderAmount := btcutil.Amount(0)
@@ -360,15 +387,11 @@ func (w *Wallet) BuildTx(
 	return tx, nil
 }
 
-func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (string, error) {
-	buf := bytes.NewBuffer(make([]byte, 0, tx.SerializeSize()))
-	if err := tx.Serialize(buf); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(buf.Bytes()), nil
-}
-
-func (w *Wallet) DecodeInscriptionScript(witness1Str string) (string, string, error) {
+func (w *Wallet) DecodeInscriptionScript(witness1Str string) (
+	contentType string,
+	bodyHexString string,
+	err error,
+) {
 	bytes, err := hex.DecodeString(witness1Str)
 	if err != nil {
 		return "", "", err
@@ -396,7 +419,7 @@ func (w *Wallet) DecodeInscriptionScript(witness1Str string) (string, string, er
 		bodyArr = append([]string{asmArr[i]}, bodyArr...)
 	}
 
-	bodyHexString := strings.Join(bodyArr, "")
+	bodyHexString = strings.Join(bodyArr, "")
 
 	asmArr = asmArr[:len(asmArr)-1-len(bodyArr)]
 
@@ -404,7 +427,7 @@ func (w *Wallet) DecodeInscriptionScript(witness1Str string) (string, string, er
 	if err != nil {
 		return "", "", err
 	}
-	contentType := string(contentTypeB)
+	contentType = string(contentTypeB)
 	if asmArr[len(asmArr)-2] != "01" {
 		return "", "", fmt.Errorf("inscription format error")
 	}

@@ -291,7 +291,7 @@ func (w *Wallet) BuildTx(
 	msgTx = wire.NewMsgTx(wire.TxVersion)
 
 	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
-	for _, utxoWithPriv := range utxoWithPrivs {
+	for i, utxoWithPriv := range utxoWithPrivs {
 		txId, err := chainhash.NewHashFromStr(utxoWithPriv.Utxo.TxId)
 		if err != nil {
 			return nil, nil, err
@@ -306,6 +306,8 @@ func (w *Wallet) BuildTx(
 			if err != nil {
 				return nil, nil, err
 			}
+			utxoWithPrivs[i].Utxo.Value = go_decimal.Decimal.MustStart(txOut.Value).MustUnShiftedBy(8).MustEndForFloat64()
+			utxoWithPrivs[i].Utxo.PkScript = hex.EncodeToString(txOut.PkScript)
 		} else {
 			pkScriptBytes, err := hex.DecodeString(utxoWithPriv.Utxo.PkScript)
 			if err != nil {

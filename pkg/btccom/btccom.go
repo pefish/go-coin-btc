@@ -121,6 +121,10 @@ func (bc *BtcComClient) ListUnspent(address string) (
 			return nil, fmt.Errorf(httpResult.Message)
 		}
 
+		if httpResult.Data.PageTotal == 0 {
+			return results, nil
+		}
+
 		results = append(results, httpResult.Data.List...)
 		if httpResult.Data.PageTotal == page {
 			return results, nil

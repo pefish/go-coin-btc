@@ -274,7 +274,8 @@ type UTXOWithPriv struct {
 	Priv string
 }
 
-func (w *Wallet) BuildTx(
+func (w *Wallet) buildUnsignedMsgTx(
+	prevOutputFetcher *txscript.MultiPrevOutFetcher,
 	utxoWithPrivs []*UTXOWithPriv,
 	changeAddress string,
 	targetAddress string,
@@ -286,13 +287,10 @@ func (w *Wallet) BuildTx(
 	realFee float64,
 	err error,
 ) {
-	targetValue := btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
-
 	totalSenderAmount := btcutil.Amount(0)
-	msgTx = wire.NewMsgTx(wire.TxVersion)
 
+	msgTx = wire.NewMsgTx(wire.TxVersion)
 	// 添加所有输入
-	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
 	for i, utxoWithPriv := range utxoWithPrivs {
 		txId, err := chainhash.NewHashFromStr(utxoWithPriv.Utxo.TxId)
 		if err != nil {
@@ -335,6 +333,30 @@ func (w *Wallet) BuildTx(
 	if err != nil {
 		return nil, nil, 0, err
 	}
+	targetValue := btcutil.Amount(0)
+	if targetValueBtc == 0 {
+		// 评估网络费
+		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
+		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+		estimateFee := btcutil.Amount(
+			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
+		)
+		targetValue = totalSenderAmount - estimateFee
+		if targetValue < 0 {
+			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+		}
+		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(targetValue)
+		newUtxos = append(newUtxos, &UTXO{
+			Address:  targetAddress,
+			Index:    uint64(len(newUtxos)),
+			PkScript: hex.EncodeToString(pkScriptBytes),
+			Value:    go_decimal.Decimal.MustStart(targetValue).MustUnShiftedBy(8).MustEndForFloat64(),
+		})
+		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
+		return msgTx, newUtxos, realFee, nil
+	}
+
+	targetValue = btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
 	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
 	newUtxos = append(newUtxos, &UTXO{
 		Address:  targetAddress,
@@ -343,57 +365,85 @@ func (w *Wallet) BuildTx(
 		Value:    targetValueBtc,
 	})
 
-	// 添加找零的输出
-	if changeAddress != "" {
-		pkScriptBytes, err := w.PayToAddrScript(changeAddress)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
-
+	if changeAddress == "" {
+		// 评估网络费
 		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-		fee := btcutil.Amount(
+		estimateFee := btcutil.Amount(
 			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
 		)
-		changeAmount := totalSenderAmount - targetValue - fee
-		if changeAmount > 0 {
-			msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
-			newUtxos = append(newUtxos, &UTXO{
-				Address:  changeAddress,
-				Index:    uint64(len(newUtxos)),
-				PkScript: hex.EncodeToString(pkScriptBytes),
-				Value:    go_decimal.Decimal.MustStart(changeAmount).MustUnShiftedBy(8).MustEndForFloat64(),
-			})
-			realFee = go_decimal.Decimal.MustStart(fee).MustUnShiftedBy(8).MustEndForFloat64()
-		} else {
-			msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1] // 找零数量 <=0 ，去掉找零的输出
-			// 重新校验余额
-			txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-			feeWithoutChange := btcutil.Amount(
-				go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-			)
-			if totalSenderAmount-targetValue < feeWithoutChange {
-				return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
-			}
-			realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
+		if totalSenderAmount-targetValue < estimateFee {
+			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
-	} else {
-		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-		fee := btcutil.Amount(
-			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-		)
-
-		if totalSenderAmount-targetValue < fee {
-			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %s, targetValue: %f, fee: %s", totalSenderAmount.String(), targetValueBtc, fee.String())
-		}
-
 		// 网络费保护
-		if totalSenderAmount-targetValue > fee*2 {
-			return nil, nil, 0, fmt.Errorf("Fee is too more. real fee: %f, should fee: %f", totalSenderAmount-targetValue, fee)
+		if totalSenderAmount-targetValue > estimateFee*2 {
+			return nil, nil, 0, fmt.Errorf("Fee is too more. real fee: %f, should fee: %f", totalSenderAmount-targetValue, estimateFee)
 		}
-
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
+		return msgTx, newUtxos, realFee, nil
+	}
 
+	// 添加找零的输出
+	pkScriptBytes, err = w.PayToAddrScript(changeAddress)
+	if err != nil {
+		return nil, nil, 0, err
+	}
+	msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
+
+	txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+	estimateFee := btcutil.Amount(
+		go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
+	)
+	changeAmount := totalSenderAmount - targetValue - estimateFee
+	if changeAmount > 0 {
+		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
+		newUtxos = append(newUtxos, &UTXO{
+			Address:  changeAddress,
+			Index:    uint64(len(newUtxos)),
+			PkScript: hex.EncodeToString(pkScriptBytes),
+			Value:    go_decimal.Decimal.MustStart(changeAmount).MustUnShiftedBy(8).MustEndForFloat64(),
+		})
+		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
+	} else {
+		msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1] // 找零数量 <=0 ，去掉找零的输出
+		// 重新校验余额
+		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+		feeWithoutChange := btcutil.Amount(
+			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
+		)
+		if totalSenderAmount-targetValue < feeWithoutChange {
+			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+		}
+		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
+	}
+	return msgTx, newUtxos, realFee, nil
+}
+
+// @param changeAddress 如果是空，则不添加找零输出
+// @param targetValueBtc 如果是0，则除了网络费所有余额都给 targetAddress，忽略 changeAddress；
+func (w *Wallet) BuildTx(
+	utxoWithPrivs []*UTXOWithPriv,
+	changeAddress string,
+	targetAddress string,
+	targetValueBtc float64,
+	feeRate float64,
+) (
+	msgTx *wire.MsgTx,
+	newUtxos []*UTXO,
+	realFee float64,
+	err error,
+) {
+	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
+
+	msgTx, newUtxos, realFee, err = w.buildUnsignedMsgTx(
+		prevOutputFetcher,
+		utxoWithPrivs,
+		changeAddress,
+		targetAddress,
+		targetValueBtc,
+		feeRate,
+	)
+	if err != nil {
+		return nil, nil, 0, err
 	}
 
 	// sign

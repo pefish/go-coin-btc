@@ -261,17 +261,17 @@ func (w *Wallet) PayToAddrScript(address string) (
 }
 
 type UTXO struct {
-	Address string
-	TxId    string
-	Index   uint64
+	Address string `json:"address"`
+	TxId    string `json:"tx_id"`
+	Index   uint64 `json:"index"`
 
-	Value    float64
-	PkScript string
+	Value    float64 `json:"value"`
+	PkScript string  `json:"pk_script"`
 }
 
 type UTXOWithPriv struct {
-	Utxo UTXO
-	Priv string
+	Utxo UTXO   `json:"utxo"`
+	Priv string `json:"priv"`
 }
 
 func (w *Wallet) buildUnsignedMsgTx(

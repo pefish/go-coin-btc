@@ -2,13 +2,18 @@ package go_coin_btc
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/ecdsa"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr"
 	"github.com/btcsuite/btcd/btcutil"
 	"github.com/btcsuite/btcd/chaincfg"
@@ -54,14 +59,135 @@ type KeyInfo struct {
 	Wif     string
 }
 
-type AddressType int
+type AddressType string
 
 const (
-	ADDRESS_TYPE_P2PKH AddressType = iota
-	ADDRESS_TYPE_P2SH
-	ADDRESS_TYPE_P2WPKH
-	ADDRESS_TYPE_P2TR
+	ADDRESS_TYPE_P2PKH   AddressType = "P2PKH"
+	ADDRESS_TYPE_P2SH    AddressType = "P2SH"
+	ADDRESS_TYPE_P2WPKH  AddressType = "P2WPKH"
+	ADDRESS_TYPE_P2TR    AddressType = "P2TR"
+	ADDRESS_TYPE_UNKNOWN AddressType = "UNKNOWN"
 )
+
+type SignedMessage struct {
+	Address   string
+	Message   string
+	Signature string
+}
+
+func (w *Wallet) CreateMagicMessage(message string) string {
+	buffer := bytes.Buffer{}
+	buffer.Grow(wire.VarIntSerializeSize(uint64(len(message))))
+
+	// If we cannot write the VarInt, just panic since that should never happen
+	if err := wire.WriteVarInt(&buffer, 0, uint64(len(message))); err != nil {
+		panic(err)
+	}
+
+	return "\x18Bitcoin Signed Message:\n" + buffer.String() + message
+}
+
+func (w *Wallet) VerifySignature(signedMessage SignedMessage, net *chaincfg.Params) (bool, error) {
+	// Decode the signature
+	signatureEncoded, err := base64.StdEncoding.DecodeString(signedMessage.Signature)
+	if err != nil {
+		return false, err
+	}
+
+	// Ensure signature has proper length
+	if len(signatureEncoded) != 65 {
+		return false, fmt.Errorf("wrong signature length: %d instead of 65", len(signatureEncoded))
+	}
+
+	// Ensure signature has proper recovery flag
+	recoveryFlag := int(signatureEncoded[0])
+	if !slices.Contains([]int{27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42}, recoveryFlag) {
+		return false, fmt.Errorf("invalid recovery flag: %d", recoveryFlag)
+	}
+
+	// Make the magic message
+	magicMessage := w.CreateMagicMessage(signedMessage.Message)
+
+	// Hash the message
+	messageHash := chainhash.DoubleHashB([]byte(magicMessage))
+
+	// 从签名中取出公钥
+	publicKeyObj, _, err := ecdsa.RecoverCompact(signatureEncoded, messageHash)
+	if err != nil {
+		return false, fmt.Errorf("could not recover pubkey: %w", err)
+	}
+
+	if publicKeyObj == nil || !publicKeyObj.IsOnCurve() {
+		return false, errors.New("public key was not correctly instantiated")
+	}
+
+	// 校验公钥和地址的匹配
+	addressType, err := w.GetAddressType(signedMessage.Address, net)
+	if err != nil {
+		return false, err
+	}
+	addr, err := w.AddressFromPubKey(hex.EncodeToString(publicKeyObj.SerializeCompressed()), addressType)
+	if err != nil {
+		return false, err
+	}
+	if !strings.EqualFold(signedMessage.Address, addr) {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+func (w *Wallet) SignMessageByWif(wif string, msg string) (string, error) {
+	wifInfo, err := btcutil.DecodeWIF(wif)
+	if err != nil {
+		return "", err
+	}
+	return w.signMessage(wifInfo.PrivKey, msg)
+}
+
+func (w *Wallet) SignMessageByPriv(priv string, msg string) (string, error) {
+	privBytes, err := hex.DecodeString(priv)
+	if err != nil {
+		return "", err
+	}
+	privObj, _ := btcec.PrivKeyFromBytes(privBytes)
+
+	return w.signMessage(privObj, msg)
+}
+
+func (w *Wallet) signMessage(privObj *btcec.PrivateKey, msg string) (string, error) {
+	magicMessage := w.CreateMagicMessage(msg)
+	messageHash := chainhash.DoubleHashB([]byte(magicMessage))
+	signature, err := ecdsa.SignCompact(privObj, messageHash, true)
+	if err != nil {
+		return "", err
+	}
+	return base64.StdEncoding.EncodeToString(signature), nil
+}
+
+func (w *Wallet) GetAddressType(address string, net *chaincfg.Params) (AddressType, error) {
+	addressObj, err := btcutil.DecodeAddress(address, net)
+	if err != nil {
+		return ADDRESS_TYPE_UNKNOWN, fmt.Errorf("could not decode address: %w", err)
+	}
+	_, ok := addressObj.(*btcutil.AddressPubKeyHash)
+	if ok {
+		return ADDRESS_TYPE_P2PKH, nil
+	}
+	_, ok = addressObj.(*btcutil.AddressScriptHash)
+	if ok {
+		return ADDRESS_TYPE_P2SH, nil
+	}
+	_, ok = addressObj.(*btcutil.AddressWitnessPubKeyHash)
+	if ok {
+		return ADDRESS_TYPE_P2WPKH, nil
+	}
+	_, ok = addressObj.(*btcutil.AddressTaproot)
+	if ok {
+		return ADDRESS_TYPE_P2TR, nil
+	}
+	return ADDRESS_TYPE_UNKNOWN, nil
+}
 
 func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (
 	addr string,
@@ -376,7 +502,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 		}
 		// 网络费保护
 		if totalSenderAmount-targetValue > estimateFee*2 {
-			return nil, nil, 0, fmt.Errorf("Fee is too more. real fee: %f, should fee: %f", totalSenderAmount-targetValue, estimateFee)
+			return nil, nil, 0, fmt.Errorf("Fee is too more. real fee: %d, should fee: %d", totalSenderAmount-targetValue, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 		return msgTx, newUtxos, realFee, nil
@@ -411,7 +537,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
 		)
 		if totalSenderAmount-targetValue < feeWithoutChange {
-			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 	}

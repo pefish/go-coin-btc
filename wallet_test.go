@@ -18,7 +18,7 @@ func TestWallet_BuildTx(t *testing.T) {
 		Password: "",
 	})
 
-	tx, _, err := w.BuildTx(
+	tx, _, _, err := w.BuildTx(
 		[]*UTXOWithPriv{
 			{
 				Utxo: UTXO{
@@ -109,4 +109,37 @@ func TestWallet_KeyInfoFromWif(t *testing.T) {
 	go_test_.Equal(t, nil, err)
 	go_test_.Equal(t, "025753c8d80dc0e6f35b79fa45eef59d2610fae76c59754ebecff43781eac55ed2", keyInfo.PubKey)
 	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", keyInfo.PrivKey)
+}
+
+func TestWallet_SignMessageByWif(t *testing.T) {
+	w := NewWallet(&chaincfg.MainNetParams)
+	r, err := w.SignMessageByWif("Kws7ckMngrpmRXXSrL7X3MhiK5X5FXTUzT4w8DjhVEM7V8qNTbDR", "hello")
+	go_test_.Equal(t, nil, err)
+	go_test_.Equal(t, "H16PHcVJyvDsMje9z21Z3KFyezncQCc7dAq50L57qEWkPHJ4jXkrIBxmCRohIwBFMpKhFSaObTpXwnapf2LXks4=", r)
+}
+
+func TestWallet_GetAddressType(t *testing.T) {
+	w := NewWallet(&chaincfg.MainNetParams)
+	r, err := w.GetAddressType("bc1qe3035dykr9fu40exrrkz0dkur4jff7y6k2qxgu", &chaincfg.MainNetParams)
+	go_test_.Equal(t, nil, err)
+	go_test_.Equal(t, ADDRESS_TYPE_P2WPKH, r)
+}
+
+func TestWallet_VerifySignature(t *testing.T) {
+	w := NewWallet(&chaincfg.MainNetParams)
+	r, err := w.VerifySignature(SignedMessage{
+		Address:   "bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn",
+		Message:   "hello",
+		Signature: "H16PHcVJyvDsMje9z21Z3KFyezncQCc7dAq50L57qEWkPHJ4jXkrIBxmCRohIwBFMpKhFSaObTpXwnapf2LXks4=",
+	}, &chaincfg.MainNetParams)
+	go_test_.Equal(t, nil, err)
+	go_test_.Equal(t, true, r)
+
+}
+
+func TestWallet_SignMessageByPriv(t *testing.T) {
+	w := NewWallet(&chaincfg.MainNetParams)
+	r, err := w.SignMessageByPriv("133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", "hello")
+	go_test_.Equal(t, nil, err)
+	go_test_.Equal(t, "H16PHcVJyvDsMje9z21Z3KFyezncQCc7dAq50L57qEWkPHJ4jXkrIBxmCRohIwBFMpKhFSaObTpXwnapf2LXks4=", r)
 }

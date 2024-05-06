@@ -374,6 +374,22 @@ func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (
 	return hex.EncodeToString(buf.Bytes()), nil
 }
 
+func (w *Wallet) MsgTxFromHex(txHex string) (
+	msgTx *wire.MsgTx,
+	err error,
+) {
+	b, err := hex.DecodeString(txHex)
+	if err != nil {
+		return nil, err
+	}
+	msgTx = wire.NewMsgTx(wire.TxVersion)
+	err = msgTx.Deserialize(bytes.NewReader(b))
+	if err != nil {
+		return nil, err
+	}
+	return msgTx, nil
+}
+
 func (w *Wallet) PayToAddrScript(address string) (
 	pkScript []byte,
 	err error,
@@ -389,6 +405,10 @@ func (w *Wallet) PayToAddrScript(address string) (
 	return targetScriptPubKey, nil
 }
 
+func (w *Wallet) GetTxVirtualSize(msgTx *wire.MsgTx) float64 {
+	return float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
+}
+
 type UTXO struct {
 	Address string `json:"address"`
 	TxId    string `json:"tx_id"`
@@ -401,6 +421,24 @@ type UTXO struct {
 type UTXOWithPriv struct {
 	Utxo UTXO   `json:"utxo"`
 	Priv string `json:"priv"`
+}
+
+func (w *Wallet) estimateUnsignedTxFee(
+	msgTx *wire.MsgTx,
+	prevOutputFetcher *txscript.MultiPrevOutFetcher,
+	utxoWithPrivs []*UTXOWithPriv,
+	feeRate float64,
+) (btcutil.Amount, error) {
+	estimateFee := btcutil.Amount(0)
+	err := w.signMsgTx(msgTx, prevOutputFetcher, utxoWithPrivs)
+	if err != nil {
+		return estimateFee, err
+	}
+	txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+	estimateFee = btcutil.Amount(
+		go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
+	)
+	return estimateFee, nil
 }
 
 func (w *Wallet) buildUnsignedMsgTx(
@@ -464,12 +502,12 @@ func (w *Wallet) buildUnsignedMsgTx(
 	}
 	targetValue := btcutil.Amount(0)
 	if targetValueBtc == 0 {
-		// 评估网络费
 		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
-		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-		estimateFee := btcutil.Amount(
-			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-		)
+		// 评估网络费
+		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, utxoWithPrivs, feeRate)
+		if err != nil {
+			return nil, nil, 0, err
+		}
 		targetValue = totalSenderAmount - estimateFee
 		if targetValue < 0 {
 			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
@@ -496,10 +534,10 @@ func (w *Wallet) buildUnsignedMsgTx(
 
 	if changeAddress == "" {
 		// 评估网络费
-		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-		estimateFee := btcutil.Amount(
-			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-		)
+		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, utxoWithPrivs, feeRate)
+		if err != nil {
+			return nil, nil, 0, err
+		}
 		if totalSenderAmount-targetValue < estimateFee {
 			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
@@ -517,11 +555,10 @@ func (w *Wallet) buildUnsignedMsgTx(
 		return nil, nil, 0, err
 	}
 	msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
-
-	txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-	estimateFee := btcutil.Amount(
-		go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-	)
+	estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, utxoWithPrivs, feeRate)
+	if err != nil {
+		return nil, nil, 0, err
+	}
 	changeAmount := totalSenderAmount - targetValue - estimateFee
 	if changeAmount > 0 {
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
@@ -535,16 +572,71 @@ func (w *Wallet) buildUnsignedMsgTx(
 	} else {
 		msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1] // 找零数量 <=0 ，去掉找零的输出
 		// 重新校验余额
-		txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-		feeWithoutChange := btcutil.Amount(
-			go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-		)
-		if totalSenderAmount-targetValue < feeWithoutChange {
+		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, utxoWithPrivs, feeRate)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		if totalSenderAmount-targetValue < estimateFee {
 			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 	}
 	return msgTx, newUtxos, realFee, nil
+}
+
+func (w *Wallet) signMsgTx(
+	msgTx *wire.MsgTx,
+	prevOutputFetcher *txscript.MultiPrevOutFetcher,
+	utxoWithPrivs []*UTXOWithPriv,
+) error {
+	for i, txIn := range msgTx.TxIn {
+		privBytes, err := hex.DecodeString(utxoWithPrivs[i].Priv)
+		if err != nil {
+			return err
+		}
+		privObj, _ := btcec.PrivKeyFromBytes(privBytes)
+
+		txOut := prevOutputFetcher.FetchPrevOutput(txIn.PreviousOutPoint)
+
+		scriptType, _, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, w.Net)
+		if err != nil {
+			return err
+		}
+		switch scriptType {
+		case txscript.WitnessV0PubKeyHashTy:
+			witness, err := txscript.WitnessSignature(
+				msgTx,
+				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
+				i,
+				txOut.Value,
+				txOut.PkScript,
+				txscript.SigHashAll,
+				privObj,
+				true,
+			)
+			if err != nil {
+				return err
+			}
+			txIn.Witness = witness
+		case txscript.WitnessV1TaprootTy:
+			witness, err := txscript.TaprootWitnessSignature(
+				msgTx,
+				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
+				i,
+				txOut.Value,
+				txOut.PkScript,
+				txscript.SigHashDefault,
+				privObj,
+			)
+			if err != nil {
+				return err
+			}
+			txIn.Witness = witness
+		default:
+			return fmt.Errorf("Script type not be supported.")
+		}
+	}
+	return nil
 }
 
 // @param changeAddress 如果是空，则不添加找零输出
@@ -575,53 +667,9 @@ func (w *Wallet) BuildTx(
 		return nil, nil, 0, err
 	}
 
-	// sign
-	for i, txIn := range msgTx.TxIn {
-		privBytes, err := hex.DecodeString(utxoWithPrivs[i].Priv)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		privObj, _ := btcec.PrivKeyFromBytes(privBytes)
-
-		txOut := prevOutputFetcher.FetchPrevOutput(txIn.PreviousOutPoint)
-
-		scriptType, _, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, w.Net)
-		if err != nil {
-			return nil, nil, 0, err
-		}
-		switch scriptType {
-		case txscript.WitnessV0PubKeyHashTy:
-			witness, err := txscript.WitnessSignature(
-				msgTx,
-				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
-				i,
-				txOut.Value,
-				txOut.PkScript,
-				txscript.SigHashAll,
-				privObj,
-				true,
-			)
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			txIn.Witness = witness
-		case txscript.WitnessV1TaprootTy:
-			witness, err := txscript.TaprootWitnessSignature(
-				msgTx,
-				txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
-				i,
-				txOut.Value,
-				txOut.PkScript,
-				txscript.SigHashDefault,
-				privObj,
-			)
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			txIn.Witness = witness
-		default:
-			return nil, nil, 0, fmt.Errorf("Script type not be supported.")
-		}
+	err = w.signMsgTx(msgTx, prevOutputFetcher, utxoWithPrivs)
+	if err != nil {
+		return nil, nil, 0, err
 	}
 
 	for i := range newUtxos {

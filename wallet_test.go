@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/btcsuite/btcd/chaincfg"
 	go_logger "github.com/pefish/go-logger"
@@ -16,7 +17,7 @@ func TestWallet_BuildTx(t *testing.T) {
 		Url:      "https://bitcoin-mainnet-archive.allthatnode.com",
 		Username: "",
 		Password: "",
-	})
+	}, 5*time.Second)
 
 	tx, _, _, err := w.BuildTx(
 		[]*UTXOWithPriv{

@@ -342,10 +342,13 @@ func (w *Wallet) MasterKeyBySeed(seedHex string) (
 	return w.keyInfoOfKey(masterKey)
 }
 
-func (w *Wallet) InitRpcClient(rpcServerConfig *RpcServerConfig) *Wallet {
+func (w *Wallet) InitRpcClient(
+	rpcServerConfig *RpcServerConfig,
+	httpTimeout time.Duration,
+) *Wallet {
 	w.RpcClient = btc_rpc_client.NewBtcRpcClient(
 		go_logger.Logger,
-		3*time.Second,
+		httpTimeout,
 		rpcServerConfig.Url,
 		rpcServerConfig.Username,
 		rpcServerConfig.Password,

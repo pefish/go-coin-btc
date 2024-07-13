@@ -63,7 +63,7 @@ func (bc *BtcComClient) ListTransactions(page uint64, address string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(bc.timeout),
 		go_http.WithLogger(bc.logger),
-	).GetForStruct(go_http.RequestParam{
+	).GetForStruct(&go_http.RequestParams{
 		Url: fmt.Sprintf("%s/v3/address/%s/tx", bc.baseUrl, address),
 		Params: map[string]interface{}{
 			"page":     page,
@@ -107,7 +107,7 @@ func (bc *BtcComClient) ListUnspent(address string) (
 		_, _, err := go_http.NewHttpRequester(
 			go_http.WithTimeout(bc.timeout),
 			go_http.WithLogger(bc.logger),
-		).GetForStruct(go_http.RequestParam{
+		).GetForStruct(&go_http.RequestParams{
 			Url: fmt.Sprintf("%s/v3/address/%s/unspent", bc.baseUrl, address),
 			Params: map[string]interface{}{
 				"page":     page,
@@ -159,7 +159,7 @@ func (bc *BtcComClient) AddressInfo(address string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(bc.timeout),
 		go_http.WithLogger(bc.logger),
-	).GetForStruct(go_http.RequestParam{
+	).GetForStruct(&go_http.RequestParams{
 		Url: fmt.Sprintf("%s/v3/address/%s", bc.baseUrl, address),
 	}, &httpResult)
 	if err != nil {

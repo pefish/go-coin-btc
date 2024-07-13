@@ -62,7 +62,7 @@ func (oc *OklinkClient) GetInscription(inscriptionId string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(oc.timeout),
 		go_http.WithLogger(oc.logger),
-	).GetForStruct(go_http.RequestParam{
+	).GetForStruct(&go_http.RequestParams{
 		Url: fmt.Sprintf("%s/api/v5/explorer/btc/inscriptions-list", oc.baseUrl),
 		Params: map[string]interface{}{
 			"inscriptionId": inscriptionId,
@@ -107,7 +107,7 @@ func (oc *OklinkClient) AddressInfo(address string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(oc.timeout),
 		go_http.WithLogger(oc.logger),
-	).GetForStruct(go_http.RequestParam{
+	).GetForStruct(&go_http.RequestParams{
 		Url: fmt.Sprintf("%s/api/v5/explorer/address/address-summary", oc.baseUrl),
 		Params: map[string]interface{}{
 			"chainShortName": "BTC",

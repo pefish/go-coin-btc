@@ -72,7 +72,7 @@ func (brc *BtcRpcClient) GetRawTransaction(txId string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(brc.timeout),
 		go_http.WithLogger(brc.logger),
-	).PostForStruct(go_http.RequestParam{
+	).PostForStruct(&go_http.RequestParams{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -115,7 +115,7 @@ func (brc *BtcRpcClient) ListTransactions(index uint64, address string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(brc.timeout),
 		go_http.WithLogger(brc.logger),
-	).PostForStruct(go_http.RequestParam{
+	).PostForStruct(&go_http.RequestParams{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -159,7 +159,7 @@ func (brc *BtcRpcClient) EstimateSmartFee() (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(brc.timeout),
 		go_http.WithLogger(brc.logger),
-	).PostForStruct(go_http.RequestParam{
+	).PostForStruct(&go_http.RequestParams{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",
@@ -197,7 +197,7 @@ func (brc *BtcRpcClient) SendRawTransaction(txHex string) (
 	_, _, err = go_http.NewHttpRequester(
 		go_http.WithTimeout(brc.timeout),
 		go_http.WithLogger(brc.logger),
-	).PostForStruct(go_http.RequestParam{
+	).PostForStruct(&go_http.RequestParams{
 		Url: brc.baseUrl,
 		Params: map[string]interface{}{
 			"jsonrpc": "2.0",

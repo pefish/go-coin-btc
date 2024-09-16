@@ -8,19 +8,19 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	go_http "github.com/pefish/go-http"
-	go_logger "github.com/pefish/go-logger"
+	i_logger "github.com/pefish/go-interface/i-logger"
 )
 
 type BtcRpcClient struct {
 	timeout  time.Duration
-	logger   go_logger.InterfaceLogger
+	logger   i_logger.ILogger
 	baseUrl  string
 	username string
 	password string
 }
 
 func NewBtcRpcClient(
-	logger go_logger.InterfaceLogger,
+	logger i_logger.ILogger,
 	httpTimeout time.Duration,
 	baseUrl string,
 	username string,

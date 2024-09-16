@@ -1,15 +1,16 @@
 module github.com/pefish/go-coin-btc
 
-go 1.21
+go 1.22.0
 
 require (
 	github.com/btcsuite/btcd v0.24.2
-	github.com/btcsuite/btcd/btcec/v2 v2.3.3
-	github.com/btcsuite/btcd/btcutil v1.1.5
+	github.com/btcsuite/btcd/btcec/v2 v2.3.4
+	github.com/btcsuite/btcd/btcutil v1.1.6
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0
 	github.com/pefish/go-decimal v0.4.0
-	github.com/pefish/go-http v0.7.0
-	github.com/pefish/go-logger v0.5.6
+	github.com/pefish/go-http v0.8.3
+	github.com/pefish/go-interface v0.1.2
+	github.com/pefish/go-logger v0.6.2
 	github.com/pefish/go-test v0.0.4
 	github.com/pkg/errors v0.9.1
 	github.com/tyler-smith/go-bip32 v1.0.0
@@ -24,7 +25,7 @@ require (
 	github.com/btcsuite/go-socks v0.0.0-20170105172521-4720035b7bfd // indirect
 	github.com/btcsuite/websocket v0.0.0-20150119174127-31079b680792 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
+	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/fatih/structs v1.1.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -33,16 +34,16 @@ require (
 	github.com/kkdai/bstream v1.0.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/pefish/go-desensitize v0.0.7 // indirect
-	github.com/pefish/go-format v0.3.2 // indirect
+	github.com/pefish/go-format v0.3.3 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/smarty/assertions v1.16.0 // indirect
-	github.com/stretchr/objx v0.5.0 // indirect
-	github.com/stretchr/testify v1.8.4 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
+	github.com/stretchr/testify v1.9.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
-	golang.org/x/crypto v0.25.0 // indirect
-	golang.org/x/net v0.27.0 // indirect
-	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/net v0.29.0 // indirect
+	golang.org/x/sys v0.25.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	moul.io/http2curl v1.0.0 // indirect
 )

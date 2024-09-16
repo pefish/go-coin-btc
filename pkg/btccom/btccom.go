@@ -5,18 +5,18 @@ import (
 	"time"
 
 	go_http "github.com/pefish/go-http"
-	go_logger "github.com/pefish/go-logger"
+	i_logger "github.com/pefish/go-interface/i-logger"
 )
 
 type BtcComClient struct {
 	timeout time.Duration
-	logger  go_logger.InterfaceLogger
+	logger  i_logger.ILogger
 	baseUrl string
 	key     string
 }
 
 func NewBtcComClient(
-	logger go_logger.InterfaceLogger,
+	logger i_logger.ILogger,
 	httpTimeout time.Duration,
 	key string,
 ) *BtcComClient {

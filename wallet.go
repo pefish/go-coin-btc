@@ -25,7 +25,7 @@ import (
 	"github.com/pefish/go-coin-btc/ord"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_decimal "github.com/pefish/go-decimal"
-	go_logger "github.com/pefish/go-logger"
+	i_logger "github.com/pefish/go-interface/i-logger"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
 )
@@ -33,6 +33,7 @@ import (
 type Wallet struct {
 	Net       *chaincfg.Params
 	RpcClient *btc_rpc_client.BtcRpcClient
+	logger    i_logger.ILogger
 }
 
 type RpcServerConfig struct {
@@ -41,9 +42,10 @@ type RpcServerConfig struct {
 	Password string `json:"password"`
 }
 
-func NewWallet(net *chaincfg.Params) *Wallet {
+func NewWallet(net *chaincfg.Params, logger i_logger.ILogger) *Wallet {
 	return &Wallet{
-		Net: net,
+		Net:    net,
+		logger: logger,
 	}
 }
 
@@ -158,10 +160,7 @@ func (w *Wallet) SignMessageByPriv(priv string, msg string) (string, error) {
 func (w *Wallet) signMessage(privObj *btcec.PrivateKey, msg string) (string, error) {
 	magicMessage := w.CreateMagicMessage(msg)
 	messageHash := chainhash.DoubleHashB([]byte(magicMessage))
-	signature, err := ecdsa.SignCompact(privObj, messageHash, true)
-	if err != nil {
-		return "", err
-	}
+	signature := ecdsa.SignCompact(privObj, messageHash, true)
 	return base64.StdEncoding.EncodeToString(signature), nil
 }
 
@@ -347,7 +346,7 @@ func (w *Wallet) InitRpcClient(
 	httpTimeout time.Duration,
 ) *Wallet {
 	w.RpcClient = btc_rpc_client.NewBtcRpcClient(
-		go_logger.Logger,
+		w.logger,
 		httpTimeout,
 		rpcServerConfig.Url,
 		rpcServerConfig.Username,

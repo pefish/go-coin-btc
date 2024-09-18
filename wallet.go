@@ -25,6 +25,7 @@ import (
 	"github.com/pefish/go-coin-btc/ord"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_decimal "github.com/pefish/go-decimal"
+	go_http "github.com/pefish/go-http"
 	i_logger "github.com/pefish/go-interface/i-logger"
 	"github.com/tyler-smith/go-bip32"
 	"github.com/tyler-smith/go-bip39"
@@ -411,6 +412,38 @@ func (w *Wallet) PayToAddrScript(address string) (
 
 func (w *Wallet) GetTxVirtualSize(msgTx *wire.MsgTx) float64 {
 	return float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
+}
+
+func (w *Wallet) GetRecommendedFeeRate() (uint64, error) {
+	apiHost := ""
+	switch w.Net.Name {
+	case chaincfg.MainNetParams.Name:
+		apiHost = "https://mempool.fractalbitcoin.io"
+	case chaincfg.SigNetParams.Name:
+		apiHost = "https://mempool.space/signet"
+	case chaincfg.TestNet3Params.Name:
+		apiHost = "https://mempool-testnet.fractalbitcoin.io"
+	default:
+		return 0, errors.New("Net not be supported.")
+	}
+	var httpResult struct {
+		FastestFee  uint64 `json:"fastestFee"`
+		HalfHourFee uint64 `json:"halfHourFee"`
+		HourFee     uint64 `json:"hourFee"`
+	}
+	_, _, err := go_http.NewHttpRequester(
+		go_http.WithTimeout(10*time.Second),
+		go_http.WithLogger(w.logger),
+	).GetForStruct(
+		&go_http.RequestParams{
+			Url: fmt.Sprintf("%s/api/v1/fees/recommended", apiHost),
+		},
+		&httpResult,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return httpResult.HalfHourFee, nil
 }
 
 type UTXO struct {

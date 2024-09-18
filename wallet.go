@@ -435,7 +435,7 @@ func (w *Wallet) MsgTxFromHex(txHex string) (
 	return msgTx, nil
 }
 
-func (w *Wallet) PayToAddrScript(address string) (
+func (w *Wallet) LockScriptFromAddress(address string) (
 	pkScript []byte,
 	err error,
 ) {
@@ -567,7 +567,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 	}
 
 	// 添加目标地址的输出
-	pkScriptBytes, err := w.PayToAddrScript(targetAddress)
+	pkScriptBytes, err := w.LockScriptFromAddress(targetAddress)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -621,7 +621,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 	}
 
 	// 添加找零的输出
-	pkScriptBytes, err = w.PayToAddrScript(changeAddress)
+	pkScriptBytes, err = w.LockScriptFromAddress(changeAddress)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -679,7 +679,46 @@ func (w *Wallet) SignMsgTx(
 			privObj, _ := btcec.PrivKeyFromBytes(privBytes)
 
 			switch scriptType {
+			case txscript.PubKeyHashTy:
+				if txIn.SignatureScript != nil {
+					continue
+				}
+				script, err := txscript.SignatureScript(
+					msgTx,
+					i,
+					txOut.PkScript,
+					txscript.SigHashAll,
+					privObj,
+					true,
+				)
+				if err != nil {
+					return err
+				}
+				txIn.SignatureScript = script
+			case txscript.ScriptHashTy:
+				if txIn.SignatureScript != nil {
+					continue
+				}
+				script, err := txscript.SignTxOutput(
+					w.Net,
+					msgTx,
+					i,
+					txOut.PkScript,
+					txscript.SigHashAll,
+					txscript.KeyClosure(func(a btcutil.Address) (*btcec.PrivateKey, bool, error) {
+						return privObj, true, nil
+					}),
+					nil,
+					nil,
+				)
+				if err != nil {
+					return err
+				}
+				txIn.SignatureScript = script
 			case txscript.WitnessV0PubKeyHashTy:
+				if txIn.Witness != nil {
+					continue
+				}
 				witness, err := txscript.WitnessSignature(
 					msgTx,
 					txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
@@ -695,6 +734,9 @@ func (w *Wallet) SignMsgTx(
 				}
 				txIn.Witness = witness
 			case txscript.WitnessV1TaprootTy:
+				if txIn.Witness != nil {
+					continue
+				}
 				witness, err := txscript.TaprootWitnessSignature(
 					msgTx,
 					txscript.NewTxSigHashes(msgTx, prevOutputFetcher),

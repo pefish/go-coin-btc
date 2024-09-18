@@ -95,6 +95,24 @@ func (w *Wallet) AddAccount(wif string) error {
 	return nil
 }
 
+func (w *Wallet) AddAccountByPrivKey(priv string) error {
+	privBytes, err := hex.DecodeString(priv)
+	if err != nil {
+		return err
+	}
+	privObj, _ := btcec.PrivKeyFromBytes(privBytes)
+	pubKStr := hex.EncodeToString(privObj.PubKey().SerializeCompressed())
+
+	addrs, err := w.AddressesFromPubKey(pubKStr)
+	if err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		w.Accounts[addr] = priv
+	}
+	return nil
+}
+
 func (w *Wallet) CreateMagicMessage(message string) string {
 	buffer := bytes.Buffer{}
 	buffer.Grow(wire.VarIntSerializeSize(uint64(len(message))))

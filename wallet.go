@@ -678,6 +678,10 @@ func (w *Wallet) SignMsgTx(
 	prevOutputFetcher *txscript.MultiPrevOutFetcher,
 ) error {
 	for i, txIn := range msgTx.TxIn {
+		if txIn.SignatureScript != nil || txIn.Witness != nil {
+			continue
+		}
+
 		txOut := prevOutputFetcher.FetchPrevOutput(txIn.PreviousOutPoint)
 
 		scriptType, addrObjs, _, err := txscript.ExtractPkScriptAddrs(txOut.PkScript, w.Net)
@@ -698,9 +702,6 @@ func (w *Wallet) SignMsgTx(
 
 			switch scriptType {
 			case txscript.PubKeyHashTy:
-				if txIn.SignatureScript != nil {
-					continue
-				}
 				script, err := txscript.SignatureScript(
 					msgTx,
 					i,
@@ -714,9 +715,6 @@ func (w *Wallet) SignMsgTx(
 				}
 				txIn.SignatureScript = script
 			case txscript.ScriptHashTy:
-				if txIn.SignatureScript != nil {
-					continue
-				}
 				script, err := txscript.SignTxOutput(
 					w.Net,
 					msgTx,
@@ -734,9 +732,6 @@ func (w *Wallet) SignMsgTx(
 				}
 				txIn.SignatureScript = script
 			case txscript.WitnessV0PubKeyHashTy:
-				if txIn.Witness != nil {
-					continue
-				}
 				witness, err := txscript.WitnessSignature(
 					msgTx,
 					txscript.NewTxSigHashes(msgTx, prevOutputFetcher),
@@ -752,9 +747,6 @@ func (w *Wallet) SignMsgTx(
 				}
 				txIn.Witness = witness
 			case txscript.WitnessV1TaprootTy:
-				if txIn.Witness != nil {
-					continue
-				}
 				witness, err := txscript.TaprootWitnessSignature(
 					msgTx,
 					txscript.NewTxSigHashes(msgTx, prevOutputFetcher),

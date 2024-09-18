@@ -5,12 +5,12 @@ import (
 	"testing"
 	"time"
 
-	go_logger "github.com/pefish/go-logger"
+	i_logger "github.com/pefish/go-interface/i-logger"
 )
 
 func TestBtcRpcClient_SendRawTransaction(t *testing.T) {
 	c := NewBtcRpcClient(
-		go_logger.Logger,
+		&i_logger.DefaultLogger,
 		3*time.Second,
 		"https://bitcoin-mainnet-archive.allthatnode.com",
 		"",
@@ -24,7 +24,7 @@ func TestBtcRpcClient_SendRawTransaction(t *testing.T) {
 
 func TestBtcRpcClient_GetRawTransaction(t *testing.T) {
 	c := NewBtcRpcClient(
-		go_logger.Logger,
+		&i_logger.DefaultLogger,
 		3*time.Second,
 		"",
 		"",

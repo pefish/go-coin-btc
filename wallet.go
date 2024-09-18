@@ -35,7 +35,7 @@ type Wallet struct {
 	Net       *chaincfg.Params
 	RpcClient *btc_rpc_client.BtcRpcClient
 	logger    i_logger.ILogger
-	accounts  map[string]string
+	Accounts  map[string]string
 }
 
 type RpcServerConfig struct {
@@ -46,8 +46,9 @@ type RpcServerConfig struct {
 
 func NewWallet(net *chaincfg.Params, logger i_logger.ILogger) *Wallet {
 	return &Wallet{
-		Net:    net,
-		logger: logger,
+		Net:      net,
+		logger:   logger,
+		Accounts: make(map[string]string, 0),
 	}
 }
 
@@ -79,8 +80,19 @@ type SignedMessage struct {
 	Signature string
 }
 
-func (w *Wallet) AddAccount(address string, priv string) {
-	w.accounts[address] = priv
+func (w *Wallet) AddAccount(wif string) error {
+	keyInfo, err := w.KeyInfoFromWif(wif)
+	if err != nil {
+		return err
+	}
+	addrs, err := w.AddressesFromPubKey(keyInfo.PubKey)
+	if err != nil {
+		return err
+	}
+	for _, addr := range addrs {
+		w.Accounts[addr] = keyInfo.PrivKey
+	}
+	return nil
 }
 
 func (w *Wallet) CreateMagicMessage(message string) string {
@@ -192,6 +204,34 @@ func (w *Wallet) GetAddressType(address string, net *chaincfg.Params) (AddressTy
 		return ADDRESS_TYPE_P2TR, nil
 	}
 	return ADDRESS_TYPE_UNKNOWN, nil
+}
+
+func (w *Wallet) AddressesFromPubKey(pubKey string) (
+	addrs map[AddressType]string,
+	err error,
+) {
+	result := make(map[AddressType]string, 0)
+	addr, err := w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2PKH)
+	if err != nil {
+		return nil, err
+	}
+	result[ADDRESS_TYPE_P2PKH] = addr
+	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2SH)
+	if err != nil {
+		return nil, err
+	}
+	result[ADDRESS_TYPE_P2SH] = addr
+	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2WPKH)
+	if err != nil {
+		return nil, err
+	}
+	result[ADDRESS_TYPE_P2WPKH] = addr
+	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2TR)
+	if err != nil {
+		return nil, err
+	}
+	result[ADDRESS_TYPE_P2TR] = addr
+	return result, nil
 }
 
 func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (
@@ -628,7 +668,7 @@ func (w *Wallet) SignMsgTx(
 		}
 		for _, addrObj := range addrObjs {
 			addr := addrObj.String()
-			priv, ok := w.accounts[addr]
+			priv, ok := w.Accounts[addr]
 			if !ok {
 				return errors.Errorf("Account <%s> not exist.", addr)
 			}

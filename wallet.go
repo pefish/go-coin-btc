@@ -23,7 +23,6 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/pefish/go-coin-btc/common"
-	"github.com/pefish/go-coin-btc/ord"
 	btc_rpc_client "github.com/pefish/go-coin-btc/remote"
 	go_decimal "github.com/pefish/go-decimal"
 	go_http "github.com/pefish/go-http"
@@ -435,13 +434,6 @@ func (w *Wallet) InitRpcClient(
 		rpcServerConfig.Password,
 	)
 	return w
-}
-
-func (w *Wallet) GetInscriptionTool(request *ord.InscriptionRequest) (
-	inscriptionTool *ord.InscriptionTool,
-	err error,
-) {
-	return ord.NewInscriptionTool(w.Net, w.RpcClient, request)
 }
 
 func (w *Wallet) MsgTxToHex(tx *wire.MsgTx) (

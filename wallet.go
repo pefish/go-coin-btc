@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/pkg/errors"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -35,7 +36,7 @@ type Wallet struct {
 	Net       *chaincfg.Params
 	RpcClient *btc_rpc_client.BtcRpcClient
 	logger    i_logger.ILogger
-	Accounts  map[string]string
+	Accounts  map[string]*secp256k1.PrivateKey
 }
 
 type RpcServerConfig struct {
@@ -48,7 +49,7 @@ func NewWallet(net *chaincfg.Params, logger i_logger.ILogger) *Wallet {
 	return &Wallet{
 		Net:      net,
 		logger:   logger,
-		Accounts: make(map[string]string, 0),
+		Accounts: make(map[string]*secp256k1.PrivateKey, 0),
 	}
 }
 
@@ -81,16 +82,19 @@ type SignedMessage struct {
 }
 
 func (w *Wallet) AddAccount(wif string) error {
-	keyInfo, err := w.KeyInfoFromWif(wif)
+	wifInfo, err := btcutil.DecodeWIF(wif)
 	if err != nil {
 		return err
 	}
-	addrs, err := w.AddressesFromPubKey(keyInfo.PubKey)
+	privK := wifInfo.PrivKey
+	pubK := privK.PubKey()
+
+	addrs, err := w.addressesFromPubKey(pubK)
 	if err != nil {
 		return err
 	}
 	for _, addr := range addrs {
-		w.Accounts[addr] = keyInfo.PrivKey
+		w.Accounts[addr] = privK
 	}
 	return nil
 }
@@ -101,14 +105,13 @@ func (w *Wallet) AddAccountByPrivKey(priv string) error {
 		return err
 	}
 	privObj, _ := btcec.PrivKeyFromBytes(privBytes)
-	pubKStr := hex.EncodeToString(privObj.PubKey().SerializeCompressed())
 
-	addrs, err := w.AddressesFromPubKey(pubKStr)
+	addrs, err := w.addressesFromPubKey(privObj.PubKey())
 	if err != nil {
 		return err
 	}
 	for _, addr := range addrs {
-		w.Accounts[addr] = priv
+		w.Accounts[addr] = privObj
 	}
 	return nil
 }
@@ -224,27 +227,27 @@ func (w *Wallet) GetAddressType(address string, net *chaincfg.Params) (AddressTy
 	return ADDRESS_TYPE_UNKNOWN, nil
 }
 
-func (w *Wallet) AddressesFromPubKey(pubKey string) (
+func (w *Wallet) addressesFromPubKey(pubKeyObj *secp256k1.PublicKey) (
 	addrs map[AddressType]string,
 	err error,
 ) {
 	result := make(map[AddressType]string, 0)
-	addr, err := w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2PKH)
+	addr, err := w.addressFromPubKey(pubKeyObj, ADDRESS_TYPE_P2PKH)
 	if err != nil {
 		return nil, err
 	}
 	result[ADDRESS_TYPE_P2PKH] = addr
-	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2SH)
+	addr, err = w.addressFromPubKey(pubKeyObj, ADDRESS_TYPE_P2SH)
 	if err != nil {
 		return nil, err
 	}
 	result[ADDRESS_TYPE_P2SH] = addr
-	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2WPKH)
+	addr, err = w.addressFromPubKey(pubKeyObj, ADDRESS_TYPE_P2WPKH)
 	if err != nil {
 		return nil, err
 	}
 	result[ADDRESS_TYPE_P2WPKH] = addr
-	addr, err = w.AddressFromPubKey(pubKey, ADDRESS_TYPE_P2TR)
+	addr, err = w.addressFromPubKey(pubKeyObj, ADDRESS_TYPE_P2TR)
 	if err != nil {
 		return nil, err
 	}
@@ -260,7 +263,18 @@ func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (
 	if err != nil {
 		return "", err
 	}
-	pubKeyHash := btcutil.Hash160(pubKeyBytes)
+	pubKeyObj, err := btcec.ParsePubKey(pubKeyBytes)
+	if err != nil {
+		return "", err
+	}
+	return w.addressFromPubKey(pubKeyObj, addressType)
+}
+
+func (w *Wallet) addressFromPubKey(pubKeyObj *secp256k1.PublicKey, addressType AddressType) (
+	addr string,
+	err error,
+) {
+	pubKeyHash := btcutil.Hash160(pubKeyObj.SerializeCompressed())
 
 	if addressType == ADDRESS_TYPE_P2PKH { // pubkeyhash
 		addrObj, err := btcutil.NewAddressPubKeyHash(pubKeyHash, w.Net)
@@ -288,10 +302,6 @@ func (w *Wallet) AddressFromPubKey(pubKey string, addressType AddressType) (
 		return addrObj.String(), nil
 	}
 	if addressType == ADDRESS_TYPE_P2TR { // witness_v1_taproot
-		pubKeyObj, err := btcec.ParsePubKey(pubKeyBytes)
-		if err != nil {
-			return "", err
-		}
 		addrObj, err := btcutil.NewAddressTaproot(schnorr.SerializePubKey(txscript.ComputeTaprootKeyNoScript(pubKeyObj)), w.Net)
 		if err != nil {
 			return "", err
@@ -317,6 +327,14 @@ func (w *Wallet) KeyInfoFromWif(wif string) (
 		PubKey:  hex.EncodeToString(pubK.SerializeCompressed()),
 		PrivKey: hex.EncodeToString(privK.Serialize()),
 	}, nil
+}
+
+func (w *Wallet) PrivateKeyToString(privObj *secp256k1.PrivateKey) string {
+	return hex.EncodeToString(privObj.Serialize())
+}
+
+func (w *Wallet) PublicKeyToString(pubObj *secp256k1.PublicKey) string {
+	return hex.EncodeToString(pubObj.SerializeCompressed())
 }
 
 func (w *Wallet) DeriveBySeedPath(seedHex string, path string) (
@@ -599,7 +617,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 		}
 		targetValue = totalSenderAmount - estimateFee
 		if targetValue < 0 {
-			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(targetValue)
 		newUtxos = append(newUtxos, &UTXO{
@@ -628,11 +646,11 @@ func (w *Wallet) buildUnsignedMsgTx(
 			return nil, nil, 0, err
 		}
 		if totalSenderAmount-targetValue < estimateFee {
-			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
 		// 网络费保护
 		if totalSenderAmount-targetValue > estimateFee*2 {
-			return nil, nil, 0, fmt.Errorf("Fee is too more. real fee: %d, should fee: %d", totalSenderAmount-targetValue, estimateFee)
+			return nil, nil, 0, errors.Errorf("Fee is too more. real fee: %d, should fee: %d", totalSenderAmount-targetValue, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 		return msgTx, newUtxos, realFee, nil
@@ -666,7 +684,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 			return nil, nil, 0, err
 		}
 		if totalSenderAmount-targetValue < estimateFee {
-			return nil, nil, 0, fmt.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
+			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 	}
@@ -690,15 +708,10 @@ func (w *Wallet) SignMsgTx(
 		}
 		for _, addrObj := range addrObjs {
 			addr := addrObj.String()
-			priv, ok := w.Accounts[addr]
+			privObj, ok := w.Accounts[addr]
 			if !ok {
 				return errors.Errorf("Account <%s> not exist.", addr)
 			}
-			privBytes, err := hex.DecodeString(priv)
-			if err != nil {
-				return err
-			}
-			privObj, _ := btcec.PrivKeyFromBytes(privBytes)
 
 			switch scriptType {
 			case txscript.PubKeyHashTy:
@@ -761,7 +774,7 @@ func (w *Wallet) SignMsgTx(
 				}
 				txIn.Witness = witness
 			default:
-				return fmt.Errorf("Script type not be supported.")
+				return errors.Errorf("Script type not be supported.")
 			}
 		}
 	}

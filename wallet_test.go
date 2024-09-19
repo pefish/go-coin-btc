@@ -155,12 +155,12 @@ func TestWallet_AddAccount(t *testing.T) {
 	w := NewWallet(&chaincfg.MainNetParams, &i_logger.DefaultLogger)
 	err := w.AddAccount("Kws7ckMngrpmRXXSrL7X3MhiK5X5FXTUzT4w8DjhVEM7V8qNTbDR")
 	go_test_.Equal(t, nil, err)
-	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", w.Accounts["bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn"])
+	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", hex.EncodeToString(w.Accounts["bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn"].Serialize()))
 }
 
 func TestWallet_AddAccountByPrivKey(t *testing.T) {
 	w := NewWallet(&chaincfg.MainNetParams, &i_logger.DefaultLogger)
 	err := w.AddAccountByPrivKey("133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc")
 	go_test_.Equal(t, nil, err)
-	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", w.Accounts["bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn"])
+	go_test_.Equal(t, "133df64b90c1c03c8b3ee8baca02e7961b0611c81f2381a64588484fc8fef0dc", hex.EncodeToString(w.Accounts["bc1psqehlepa3u0ahz32y0phhvljxt8tdj2h0jdnwz6yvkz6akpsmwcqruy6qn"].Serialize()))
 }

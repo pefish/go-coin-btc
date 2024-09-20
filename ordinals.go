@@ -16,6 +16,7 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	go_decimal "github.com/pefish/go-decimal"
+	go_format "github.com/pefish/go-format"
 	"github.com/pkg/errors"
 )
 
@@ -352,9 +353,9 @@ func (w *Wallet) BuildTransferBrc20Txs(
 				{
 					ContentType: "text/plain;charset=utf-8",
 					Body: []byte(fmt.Sprintf(
-						`{"p":"brc-20","op":"transfer","tick":"%s","amt":"%f"}`,
+						`{"p":"brc-20","op":"transfer","tick":"%s","amt":"%s"}`,
 						strings.ToLower(params.Symbol),
-						params.Amount,
+						go_format.ToString(params.Amount),
 					)),
 				},
 			},

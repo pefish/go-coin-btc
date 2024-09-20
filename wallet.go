@@ -463,6 +463,14 @@ func (w *Wallet) MsgTxFromHex(txHex string) (
 	return msgTx, nil
 }
 
+func (w *Wallet) AddressFromLockScript(pkScript []byte) (string, error) {
+	_, addrs, _, err := txscript.ExtractPkScriptAddrs(pkScript, w.Net)
+	if err != nil {
+		return "", err
+	}
+	return addrs[0].String(), nil
+}
+
 func (w *Wallet) LockScriptFromAddress(address string) (
 	pkScript []byte,
 	err error,
@@ -563,7 +571,6 @@ func (w *Wallet) buildUnsignedMsgTx(
 	feeRate int64,
 ) (
 	msgTx *wire.MsgTx,
-	newUtxos []*OutPoint,
 	realFee float64,
 	err error,
 ) {
@@ -574,12 +581,12 @@ func (w *Wallet) buildUnsignedMsgTx(
 	for _, utxo := range utxos {
 		txOut, err := w.GetTxOutByOutPoint(utxo)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, 0, err
 		}
 
 		txId, err := chainhash.NewHashFromStr(utxo.Hash)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, 0, err
 		}
 		outPoint := wire.OutPoint{
 			Hash:  *txId,
@@ -597,80 +604,71 @@ func (w *Wallet) buildUnsignedMsgTx(
 	// 添加目标地址的输出
 	pkScriptBytes, err := w.LockScriptFromAddress(targetAddress)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, 0, err
 	}
 	targetValue := int64(0)
 	if targetValueBtc == 0 {
 		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
 		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, 0, err
 		}
 		targetValue = totalSenderAmount - estimateFee
 		if targetValue < 0 {
-			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+			return nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(targetValue)
-		newUtxos = append(newUtxos, &OutPoint{
-			Index: len(newUtxos),
-		})
 		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
-		return msgTx, newUtxos, realFee, nil
+		return msgTx, realFee, nil
 	}
 
 	targetValue = go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64()
 	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
-	newUtxos = append(newUtxos, &OutPoint{
-		Index: len(newUtxos),
-	})
 
 	if changeAddress == "" {
 		// 评估网络费
 		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, 0, err
 		}
 		if totalSenderAmount-targetValue < estimateFee {
-			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
+			return nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
 		// 网络费保护
 		if totalSenderAmount-targetValue > estimateFee*2 {
-			return nil, nil, 0, errors.Errorf("Fee is too more. real fee: %d, should fee: %d", totalSenderAmount-targetValue, estimateFee)
+			return nil, 0, errors.Errorf("Fee is too more. real fee: %d, should fee: %d", totalSenderAmount-targetValue, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
-		return msgTx, newUtxos, realFee, nil
+		return msgTx, realFee, nil
 	}
 
 	// 添加找零的输出
 	pkScriptBytes, err = w.LockScriptFromAddress(changeAddress)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, 0, err
 	}
 	msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
 	estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 	if err != nil {
-		return nil, nil, 0, err
+		return nil, 0, err
 	}
 	changeAmount := totalSenderAmount - targetValue - estimateFee
 	if changeAmount > 0 {
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
-		newUtxos = append(newUtxos, &OutPoint{
-			Index: len(newUtxos),
-		})
 		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
 	} else {
 		msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1] // 找零数量 <=0 ，去掉找零的输出
 		// 重新校验余额
 		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
-			return nil, nil, 0, err
+			return nil, 0, err
 		}
 		if totalSenderAmount-targetValue < estimateFee {
-			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
+			return nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", int64(totalSenderAmount), targetValueBtc, estimateFee)
 		}
 		realFee = go_decimal.Decimal.MustStart(totalSenderAmount - targetValue).MustUnShiftedBy(8).MustEndForFloat64()
 	}
-	return msgTx, newUtxos, realFee, nil
+	return msgTx, realFee, nil
 }
 
 func (w *Wallet) SignMsgTx(
@@ -773,13 +771,13 @@ func (w *Wallet) BuildTx(
 	feeRate int64,
 ) (
 	msgTx *wire.MsgTx,
-	newUtxos []*OutPoint,
+	newUtxos map[string][]*OutPoint,
 	realFee float64,
 	err error,
 ) {
 	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
 
-	msgTx, newUtxos, realFee, err = w.buildUnsignedMsgTx(
+	msgTx, realFee, err = w.buildUnsignedMsgTx(
 		prevOutputFetcher,
 		utxos,
 		changeAddress,
@@ -796,8 +794,20 @@ func (w *Wallet) BuildTx(
 		return nil, nil, 0, err
 	}
 
-	for i := range newUtxos {
-		newUtxos[i].Hash = msgTx.TxHash().String()
+	newUtxos = make(map[string][]*OutPoint)
+	for i, out := range msgTx.TxOut {
+		address, err := w.AddressFromLockScript(out.PkScript)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+		_, ok := newUtxos[address]
+		if !ok {
+			newUtxos[address] = make([]*OutPoint, 0)
+		}
+		newUtxos[address] = append(newUtxos[address], &OutPoint{
+			Hash:  msgTx.TxID(),
+			Index: i,
+		})
 	}
 
 	return msgTx, newUtxos, realFee, nil

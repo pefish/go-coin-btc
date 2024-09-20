@@ -60,7 +60,7 @@ func (w *Wallet) BuildInscribeTxs(
 
 type buildInscribeTxsParams struct {
 	BuildInscribeTxsParams
-	InscriptionOutputValue int64
+	InscriptionOutputValue int64 // 指定每个铭文输出上的 sats 数量
 }
 
 func (w *Wallet) buildInscribeTxs(
@@ -171,7 +171,7 @@ func (w *Wallet) buildInscribeTxs(
 			return nil, err
 		}
 
-		dustTxOutValue := big.NewInt(MinDustValue)
+		dustTxOutValue := big.NewInt(params.InscriptionOutputValue)
 		{
 			// 评估 reveal tx 网络费
 			commitTxHash := commitTx.TxHash()
@@ -180,7 +180,7 @@ func (w *Wallet) buildInscribeTxs(
 				&commitTxHash,
 				0,
 			), nil, nil))
-			fakeRevealTx.AddTxOut(wire.NewTxOut(MinDustValue, feeAddressUnlockScript))
+			fakeRevealTx.AddTxOut(wire.NewTxOut(params.InscriptionOutputValue, feeAddressUnlockScript))
 			virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx)))
 			emptySignature := make([]byte, 64)
 			emptyControlBlockWitness := make([]byte, 33)
@@ -250,7 +250,7 @@ func (w *Wallet) buildInscribeTxs(
 			receivePkScript = pkScript_
 		}
 
-		revealTxDustTxOut := wire.NewTxOut(MinDustValue, receivePkScript)
+		revealTxDustTxOut := wire.NewTxOut(params.InscriptionOutputValue, receivePkScript)
 		revealTx.AddTxOut(revealTxDustTxOut)
 
 		// 检查最大 tx weight
@@ -331,7 +331,7 @@ func (w *Wallet) BuildTransferBrc20Txs(
 		if err != nil {
 			return nil, err
 		}
-		fakeRevealTx.AddTxOut(wire.NewTxOut(MinDustValue, pkScript))
+		fakeRevealTx.AddTxOut(wire.NewTxOut(inscriptionOutputValue.Int64(), pkScript))
 		virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx)))
 
 		emptySignature := make([]byte, 64)

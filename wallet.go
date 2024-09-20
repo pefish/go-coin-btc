@@ -482,7 +482,7 @@ func (w *Wallet) GetTxVirtualSize(msgTx *wire.MsgTx) float64 {
 	return float64(mempool.GetTxVirtualSize(btcutil.NewTx(msgTx)))
 }
 
-func (w *Wallet) GetRecommendedFeeRate() (uint64, error) {
+func (w *Wallet) GetRecommendedFeeRate() (int64, error) {
 	apiHost := ""
 	switch w.Net.Name {
 	case chaincfg.MainNetParams.Name:
@@ -495,9 +495,9 @@ func (w *Wallet) GetRecommendedFeeRate() (uint64, error) {
 		return 0, errors.New("Net not be supported.")
 	}
 	var httpResult struct {
-		FastestFee  uint64 `json:"fastestFee"`
-		HalfHourFee uint64 `json:"halfHourFee"`
-		HourFee     uint64 `json:"hourFee"`
+		FastestFee  int64 `json:"fastestFee"`
+		HalfHourFee int64 `json:"halfHourFee"`
+		HourFee     int64 `json:"hourFee"`
 	}
 	_, _, err := go_http.NewHttpRequester(
 		go_http.WithTimeout(10*time.Second),

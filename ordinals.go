@@ -375,7 +375,9 @@ func (w *Wallet) BuildTransferBrc20Txs(
 		&inscriptionTxHash,
 		0,
 	)
-	sendInscriptionTx.AddTxIn(wire.NewTxIn(inscriptionTxOutPoint, nil, nil))
+	in := wire.NewTxIn(inscriptionTxOutPoint, nil, nil)
+	in.Sequence = DefaultSequenceNum
+	sendInscriptionTx.AddTxIn(in)
 	prevOutputFetcher.AddPrevOut(*inscriptionTxOutPoint, inscribeTxs.RevealTxs[0].TxOut[0])
 	pkScript, err := w.LockScriptFromAddress(params.Address)
 	if err != nil {

@@ -3,7 +3,9 @@ package go_coin_btc
 import (
 	"bytes"
 	"encoding/hex"
+	"fmt"
 	"math/big"
+	"strings"
 
 	"github.com/btcsuite/btcd/blockchain"
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -49,6 +51,20 @@ type BuildInscribeTxsResult struct {
 
 func (w *Wallet) BuildInscribeTxs(
 	params *BuildInscribeTxsParams,
+) (*BuildInscribeTxsResult, error) {
+	return w.buildInscribeTxs(&buildInscribeTxsParams{
+		BuildInscribeTxsParams: *params,
+		InscriptionOutputValue: MinDustValue,
+	})
+}
+
+type buildInscribeTxsParams struct {
+	BuildInscribeTxsParams
+	InscriptionOutputValue int64
+}
+
+func (w *Wallet) buildInscribeTxs(
+	params *buildInscribeTxsParams,
 ) (*BuildInscribeTxsResult, error) {
 	if len(params.OutPoints) == 0 {
 		return nil, errors.New("Balance not enough.")
@@ -225,11 +241,16 @@ func (w *Wallet) BuildInscribeTxs(
 		prevOutputFetcher.AddPrevOut(*outPoint, commitTx.TxOut[i])
 
 		// 添加铭文接收账户
-		pkScript, err := w.LockScriptFromAddress(params.ReceiveAddress)
-		if err != nil {
-			return nil, err
+		receivePkScript := feeAddressUnlockScript
+		if params.ReceiveAddress != "" {
+			pkScript_, err := w.LockScriptFromAddress(params.ReceiveAddress)
+			if err != nil {
+				return nil, err
+			}
+			receivePkScript = pkScript_
 		}
-		revealTxDustTxOut := wire.NewTxOut(MinDustValue, pkScript)
+
+		revealTxDustTxOut := wire.NewTxOut(MinDustValue, receivePkScript)
 		revealTx.AddTxOut(revealTxDustTxOut)
 
 		// 检查最大 tx weight
@@ -273,6 +294,102 @@ func (w *Wallet) BuildInscribeTxs(
 			},
 		},
 		SpentAmount: go_decimal.Decimal.MustStart(spentAmount).MustUnShiftedBy(8).MustEndForFloat64(),
+	}, nil
+}
+
+type BuildTransferBrc20TxsResult struct {
+	BuildInscribeTxsResult
+	SendInscriptionTx *wire.MsgTx
+}
+
+type BuildTransferBrc20TxsParams struct {
+	OutPoints []*OutPoint
+	FeeRate   uint64
+	Symbol    string
+	Amount    float64
+	Address   string
+}
+
+func (w *Wallet) BuildTransferBrc20Txs(
+	params *BuildTransferBrc20TxsParams,
+) (*BuildTransferBrc20TxsResult, error) {
+	// 先将转账铭文铸造给自己（根据 BRC20 协议，转账铭文只能先铸造给自己才能转账给别人），铭文上的 sats 数量应该是 dust+fee（转账铭文需要的 fee）
+	inscriptionOutputValue := big.NewInt(MinDustValue)
+
+	{
+		fakeRevealTx := wire.NewMsgTx(wire.TxVersion)
+		// 随便一个 hash
+		hashObj, err := chainhash.NewHashFromStr("07fd9c7003cd5869ec2a7e19f87c22e8faeff70d98973404ad35c6ac9a35d73b")
+		if err != nil {
+			return nil, err
+		}
+		fakeRevealTx.AddTxIn(wire.NewTxIn(wire.NewOutPoint(
+			hashObj,
+			0,
+		), nil, nil))
+		pkScript, err := w.LockScriptFromAddress(params.Address)
+		if err != nil {
+			return nil, err
+		}
+		fakeRevealTx.AddTxOut(wire.NewTxOut(MinDustValue, pkScript))
+		virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx)))
+
+		emptySignature := make([]byte, 64)
+		virtualSize.Add(virtualSize, big.NewInt(
+			int64(wire.TxWitness{
+				emptySignature,
+			}.SerializeSize()+2+3)/4,
+		))
+		fee := virtualSize.Mul(virtualSize, big.NewInt(int64(params.FeeRate)))
+		inscriptionOutputValue.Add(inscriptionOutputValue, fee)
+	}
+
+	inscribeTxs, err := w.buildInscribeTxs(&buildInscribeTxsParams{
+		BuildInscribeTxsParams: BuildInscribeTxsParams{
+			OutPoints: params.OutPoints,
+			FeeRate:   params.FeeRate,
+			InscribeDatas: []*InscribeData{
+				{
+					ContentType: "text/plain;charset=utf-8",
+					Body: []byte(fmt.Sprintf(
+						`{"p":"brc-20","op":"transfer","tick":"%s","amt":"%f"}`,
+						strings.ToLower(params.Symbol),
+						params.Amount,
+					)),
+				},
+			},
+			ReceiveAddress: "",
+		},
+		InscriptionOutputValue: inscriptionOutputValue.Int64(),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 开始转账铭文
+	prevOutputFetcher := txscript.NewMultiPrevOutFetcher(nil)
+	sendInscriptionTx := wire.NewMsgTx(wire.TxVersion)
+	inscriptionTxHash := inscribeTxs.RevealTxs[0].TxHash()
+	inscriptionTxOutPoint := wire.NewOutPoint(
+		&inscriptionTxHash,
+		0,
+	)
+	sendInscriptionTx.AddTxIn(wire.NewTxIn(inscriptionTxOutPoint, nil, nil))
+	prevOutputFetcher.AddPrevOut(*inscriptionTxOutPoint, inscribeTxs.RevealTxs[0].TxOut[0])
+	pkScript, err := w.LockScriptFromAddress(params.Address)
+	if err != nil {
+		return nil, err
+	}
+	sendInscriptionTx.AddTxOut(wire.NewTxOut(MinDustValue, pkScript))
+
+	err = w.SignMsgTx(sendInscriptionTx, prevOutputFetcher)
+	if err != nil {
+		return nil, err
+	}
+
+	return &BuildTransferBrc20TxsResult{
+		BuildInscribeTxsResult: *inscribeTxs,
+		SendInscriptionTx:      sendInscriptionTx,
 	}, nil
 }
 

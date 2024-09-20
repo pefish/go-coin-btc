@@ -515,12 +515,11 @@ func (w *Wallet) GetRecommendedFeeRate() (uint64, error) {
 }
 
 type UTXO struct {
-	Address string `json:"address"`
-	TxId    string `json:"tx_id"`
-	Index   uint64 `json:"index"`
+	TxId  string `json:"tx_id"`
+	Index uint64 `json:"index"`
 
 	Value    float64 `json:"value"`
-	PkScript string  `json:"pk_script"`
+	PkScript string  `json:"pk_script"` // 可以为空，为空的话会访问节点获得
 }
 
 func (w *Wallet) estimateUnsignedTxFee(
@@ -613,7 +612,6 @@ func (w *Wallet) buildUnsignedMsgTx(
 		}
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(targetValue)
 		newUtxos = append(newUtxos, &UTXO{
-			Address:  targetAddress,
 			Index:    uint64(len(newUtxos)),
 			PkScript: hex.EncodeToString(pkScriptBytes),
 			Value:    go_decimal.Decimal.MustStart(targetValue).MustUnShiftedBy(8).MustEndForFloat64(),
@@ -625,7 +623,6 @@ func (w *Wallet) buildUnsignedMsgTx(
 	targetValue = btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
 	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
 	newUtxos = append(newUtxos, &UTXO{
-		Address:  targetAddress,
 		Index:    uint64(len(newUtxos)),
 		PkScript: hex.EncodeToString(pkScriptBytes),
 		Value:    targetValueBtc,
@@ -662,7 +659,6 @@ func (w *Wallet) buildUnsignedMsgTx(
 	if changeAmount > 0 {
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
 		newUtxos = append(newUtxos, &UTXO{
-			Address:  changeAddress,
 			Index:    uint64(len(newUtxos)),
 			PkScript: hex.EncodeToString(pkScriptBytes),
 			Value:    go_decimal.Decimal.MustStart(changeAmount).MustUnShiftedBy(8).MustEndForFloat64(),

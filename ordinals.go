@@ -34,9 +34,10 @@ type InscribeData struct {
 }
 
 type BuildInscribeTxsParams struct {
-	OutPoints     []*OutPoint
-	FeeRate       uint64
-	InscribeDatas []*InscribeData
+	OutPoints      []*OutPoint
+	FeeRate        uint64
+	InscribeDatas  []*InscribeData
+	ReceiveAddress string
 }
 
 type BuildInscribeTxsResult struct {
@@ -224,7 +225,11 @@ func (w *Wallet) BuildInscribeTxs(
 		prevOutputFetcher.AddPrevOut(*outPoint, commitTx.TxOut[i])
 
 		// 添加铭文接收账户
-		revealTxDustTxOut := wire.NewTxOut(MinDustValue, feeAddressUnlockScript)
+		pkScript, err := w.LockScriptFromAddress(params.ReceiveAddress)
+		if err != nil {
+			return nil, err
+		}
+		revealTxDustTxOut := wire.NewTxOut(MinDustValue, pkScript)
 		revealTx.AddTxOut(revealTxDustTxOut)
 
 		// 检查最大 tx weight

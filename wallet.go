@@ -519,21 +519,39 @@ type OutPoint struct {
 	Index int
 }
 
-func (w *Wallet) estimateUnsignedTxFee(
+func (w *Wallet) estimateTxFee(
 	msgTx *wire.MsgTx,
-	prevOutputFetcher *txscript.MultiPrevOutFetcher,
-	feeRate float64,
-) (btcutil.Amount, error) {
-	estimateFee := btcutil.Amount(0)
-	err := w.SignMsgTx(msgTx, prevOutputFetcher)
+	feeRate int64,
+) (int64, error) {
+	virtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
+	emptySignature := make([]byte, 64)
+	virtualSize += int64(wire.TxWitness{
+		emptySignature,
+	}.SerializeSize()+2+3) / 4
+
+	return virtualSize * feeRate, nil
+}
+
+func (w *Wallet) GetTxOutByOutPoint(outPoint *OutPoint) (
+	txOut *wire.TxOut,
+	err error,
+) {
+	tx, err := w.RpcClient.GetRawTransaction(outPoint.Hash)
 	if err != nil {
-		return estimateFee, err
+		return nil, err
 	}
-	txVirtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(msgTx))
-	estimateFee = btcutil.Amount(
-		go_decimal.Decimal.MustStart(feeRate).MustMulti(txVirtualSize).RoundUp(0).MustEndForInt64(),
-	)
-	return estimateFee, nil
+	if int(outPoint.Index) >= len(tx.Vout) {
+		return nil, errors.New("err out point")
+	}
+	pkScriptBytes, err := hex.DecodeString(tx.Vout[outPoint.Index].ScriptPubKey.Hex)
+	if err != nil {
+		return nil, err
+	}
+
+	return wire.NewTxOut(
+		go_decimal.Decimal.MustStart(tx.Vout[outPoint.Index].Value).MustShiftedBy(8).MustEndForInt64(),
+		pkScriptBytes,
+	), nil
 }
 
 func (w *Wallet) buildUnsignedMsgTx(
@@ -542,18 +560,23 @@ func (w *Wallet) buildUnsignedMsgTx(
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
-	feeRate float64,
+	feeRate int64,
 ) (
 	msgTx *wire.MsgTx,
 	newUtxos []*OutPoint,
 	realFee float64,
 	err error,
 ) {
-	totalSenderAmount := btcutil.Amount(0)
+	totalSenderAmount := int64(0)
 
 	msgTx = wire.NewMsgTx(wire.TxVersion)
 	// 添加所有输入
 	for _, utxo := range utxos {
+		txOut, err := w.GetTxOutByOutPoint(utxo)
+		if err != nil {
+			return nil, nil, 0, err
+		}
+
 		txId, err := chainhash.NewHashFromStr(utxo.Hash)
 		if err != nil {
 			return nil, nil, 0, err
@@ -562,17 +585,13 @@ func (w *Wallet) buildUnsignedMsgTx(
 			Hash:  *txId,
 			Index: uint32(utxo.Index),
 		}
-		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
-		if err != nil {
-			return nil, nil, 0, err
-		}
 		prevOutputFetcher.AddPrevOut(outPoint, txOut)
 
 		in := wire.NewTxIn(&outPoint, nil, nil)
 		in.Sequence = common.DefaultSequenceNum
 		msgTx.AddTxIn(in)
 
-		totalSenderAmount += btcutil.Amount(txOut.Value)
+		totalSenderAmount += txOut.Value
 	}
 
 	// 添加目标地址的输出
@@ -580,11 +599,10 @@ func (w *Wallet) buildUnsignedMsgTx(
 	if err != nil {
 		return nil, nil, 0, err
 	}
-	targetValue := btcutil.Amount(0)
+	targetValue := int64(0)
 	if targetValueBtc == 0 {
 		msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
-		// 评估网络费
-		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, feeRate)
+		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -600,7 +618,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 		return msgTx, newUtxos, realFee, nil
 	}
 
-	targetValue = btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
+	targetValue = go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64()
 	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
 	newUtxos = append(newUtxos, &OutPoint{
 		Index: len(newUtxos),
@@ -608,7 +626,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 
 	if changeAddress == "" {
 		// 评估网络费
-		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, feeRate)
+		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -629,7 +647,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 		return nil, nil, 0, err
 	}
 	msgTx.AddTxOut(wire.NewTxOut(0, pkScriptBytes))
-	estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, feeRate)
+	estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 	if err != nil {
 		return nil, nil, 0, err
 	}
@@ -643,7 +661,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 	} else {
 		msgTx.TxOut = msgTx.TxOut[:len(msgTx.TxOut)-1] // 找零数量 <=0 ，去掉找零的输出
 		// 重新校验余额
-		estimateFee, err := w.estimateUnsignedTxFee(msgTx, prevOutputFetcher, feeRate)
+		estimateFee, err := w.estimateTxFee(msgTx, feeRate)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -752,7 +770,7 @@ func (w *Wallet) BuildTx(
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
-	feeRate float64,
+	feeRate int64,
 ) (
 	msgTx *wire.MsgTx,
 	newUtxos []*OutPoint,

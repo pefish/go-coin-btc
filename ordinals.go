@@ -2,7 +2,6 @@ package go_coin_btc
 
 import (
 	"bytes"
-	"encoding/hex"
 	"fmt"
 	"strings"
 
@@ -70,7 +69,7 @@ func (w *Wallet) buildInscribeTxs(
 	inAmountSum := int64(0)
 	outAmountSum := int64(0)
 	for i, feeOutPoint := range params.OutPoints {
-		txOut, err := w.getTxOutByOutPoint(feeOutPoint)
+		txOut, err := w.GetTxOutByOutPoint(feeOutPoint)
 		if err != nil {
 			return nil, err
 		}
@@ -377,26 +376,4 @@ func (w *Wallet) BuildTransferBrc20Txs(
 		BuildInscribeTxsResult: *inscribeTxs,
 		SendInscriptionTx:      sendInscriptionTx,
 	}, nil
-}
-
-func (w *Wallet) getTxOutByOutPoint(outPoint *OutPoint) (
-	txOut *wire.TxOut,
-	err error,
-) {
-	tx, err := w.RpcClient.GetRawTransaction(outPoint.Hash)
-	if err != nil {
-		return nil, err
-	}
-	if int(outPoint.Index) >= len(tx.Vout) {
-		return nil, errors.New("err out point")
-	}
-	pkScriptBytes, err := hex.DecodeString(tx.Vout[outPoint.Index].ScriptPubKey.Hex)
-	if err != nil {
-		return nil, err
-	}
-
-	return wire.NewTxOut(
-		go_decimal.Decimal.MustStart(tx.Vout[outPoint.Index].Value).MustShiftedBy(8).MustEndForInt64(),
-		pkScriptBytes,
-	), nil
 }

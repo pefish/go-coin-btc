@@ -40,9 +40,10 @@ type BuildInscribeTxsParams struct {
 }
 
 type BuildInscribeTxsResult struct {
-	CommitTx  *wire.MsgTx
-	RevealTxs []*wire.MsgTx
-	OutUTXOs  []*OutPoint
+	CommitTx    *wire.MsgTx
+	RevealTxs   []*wire.MsgTx
+	OutUTXOs    []*OutPoint
+	SpentAmount float64
 }
 
 func (w *Wallet) BuildInscribeTxs(
@@ -192,8 +193,8 @@ func (w *Wallet) BuildInscribeTxs(
 	fee := virtualSize.Mul(virtualSize, big.NewInt(int64(params.FeeRate)))
 
 	// 找零
-	changeAmount := inAmountSum.Sub(inAmountSum, outAmountSum)
-	changeAmount.Sub(changeAmount, fee)
+	spentAmount := outAmountSum.Add(outAmountSum, fee)
+	changeAmount := inAmountSum.Sub(inAmountSum, spentAmount)
 	if changeAmount.Cmp(big.NewInt(0)) < 0 {
 		return nil, errors.New("Balance not enough in commit tx.")
 	}
@@ -266,6 +267,7 @@ func (w *Wallet) BuildInscribeTxs(
 				Index: len(commitTx.TxOut) - 1,
 			},
 		},
+		SpentAmount: go_decimal.Decimal.MustStart(spentAmount).MustUnShiftedBy(8).MustEndForFloat64(),
 	}, nil
 }
 

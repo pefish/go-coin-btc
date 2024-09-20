@@ -25,3 +25,12 @@ func TestOklinkClient_AddressInfo(t *testing.T) {
 	}
 	fmt.Println(result)
 }
+
+func TestOklinkClient_AddressBrc20Tokens(t *testing.T) {
+	c := NewOklinkClient(&i_logger.DefaultLogger, 5*time.Second, "")
+	result, err := c.AddressBrc20Tokens(Chain_Fractal_Bitcoin_Mainnet, "bc1pd65npmhm8psyvvhc446n356g5n99k84n3lr7x9lu82cd6sc6ugvqgwqumv")
+	if err != nil {
+		t.Error(err)
+	}
+	fmt.Println(result)
+}

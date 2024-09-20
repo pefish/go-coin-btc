@@ -514,12 +514,9 @@ func (w *Wallet) GetRecommendedFeeRate() (uint64, error) {
 	return httpResult.HalfHourFee, nil
 }
 
-type UTXO struct {
-	TxId  string `json:"tx_id"`
-	Index uint64 `json:"index"`
-
-	Value    float64 `json:"value"`
-	PkScript string  `json:"pk_script"` // 可以为空，为空的话会访问节点获得
+type OutPoint struct {
+	Hash  string
+	Index int
 }
 
 func (w *Wallet) estimateUnsignedTxFee(
@@ -541,14 +538,14 @@ func (w *Wallet) estimateUnsignedTxFee(
 
 func (w *Wallet) buildUnsignedMsgTx(
 	prevOutputFetcher *txscript.MultiPrevOutFetcher,
-	utxos []*UTXO,
+	utxos []*OutPoint,
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
 	feeRate float64,
 ) (
 	msgTx *wire.MsgTx,
-	newUtxos []*UTXO,
+	newUtxos []*OutPoint,
 	realFee float64,
 	err error,
 ) {
@@ -557,7 +554,7 @@ func (w *Wallet) buildUnsignedMsgTx(
 	msgTx = wire.NewMsgTx(wire.TxVersion)
 	// 添加所有输入
 	for _, utxo := range utxos {
-		txId, err := chainhash.NewHashFromStr(utxo.TxId)
+		txId, err := chainhash.NewHashFromStr(utxo.Hash)
 		if err != nil {
 			return nil, nil, 0, err
 		}
@@ -565,24 +562,9 @@ func (w *Wallet) buildUnsignedMsgTx(
 			Hash:  *txId,
 			Index: uint32(utxo.Index),
 		}
-		var txOut *wire.TxOut
-		if utxo.PkScript == "" {
-			txOut, err = common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
-			if err != nil {
-				return nil, nil, 0, err
-			}
-			utxo.Value = go_decimal.Decimal.MustStart(txOut.Value).MustUnShiftedBy(8).MustEndForFloat64()
-			utxo.PkScript = hex.EncodeToString(txOut.PkScript)
-		} else {
-			pkScriptBytes, err := hex.DecodeString(utxo.PkScript)
-			if err != nil {
-				return nil, nil, 0, err
-			}
-
-			txOut = wire.NewTxOut(
-				go_decimal.Decimal.MustStart(utxo.Value).MustShiftedBy(8).MustEndForInt64(),
-				pkScriptBytes,
-			)
+		txOut, err := common.GetTxOutByOutPoint(w.RpcClient, &outPoint)
+		if err != nil {
+			return nil, nil, 0, err
 		}
 		prevOutputFetcher.AddPrevOut(outPoint, txOut)
 
@@ -611,10 +593,8 @@ func (w *Wallet) buildUnsignedMsgTx(
 			return nil, nil, 0, errors.Errorf("Insufficient balance. totalSenderAmount: %d, targetValue: %f, fee: %d", totalSenderAmount, targetValueBtc, estimateFee)
 		}
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(targetValue)
-		newUtxos = append(newUtxos, &UTXO{
-			Index:    uint64(len(newUtxos)),
-			PkScript: hex.EncodeToString(pkScriptBytes),
-			Value:    go_decimal.Decimal.MustStart(targetValue).MustUnShiftedBy(8).MustEndForFloat64(),
+		newUtxos = append(newUtxos, &OutPoint{
+			Index: len(newUtxos),
 		})
 		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
 		return msgTx, newUtxos, realFee, nil
@@ -622,10 +602,8 @@ func (w *Wallet) buildUnsignedMsgTx(
 
 	targetValue = btcutil.Amount(go_decimal.Decimal.MustStart(targetValueBtc).MustShiftedBy(8).MustEndForInt64())
 	msgTx.AddTxOut(wire.NewTxOut(int64(targetValue), pkScriptBytes))
-	newUtxos = append(newUtxos, &UTXO{
-		Index:    uint64(len(newUtxos)),
-		PkScript: hex.EncodeToString(pkScriptBytes),
-		Value:    targetValueBtc,
+	newUtxos = append(newUtxos, &OutPoint{
+		Index: len(newUtxos),
 	})
 
 	if changeAddress == "" {
@@ -658,10 +636,8 @@ func (w *Wallet) buildUnsignedMsgTx(
 	changeAmount := totalSenderAmount - targetValue - estimateFee
 	if changeAmount > 0 {
 		msgTx.TxOut[len(msgTx.TxOut)-1].Value = int64(changeAmount)
-		newUtxos = append(newUtxos, &UTXO{
-			Index:    uint64(len(newUtxos)),
-			PkScript: hex.EncodeToString(pkScriptBytes),
-			Value:    go_decimal.Decimal.MustStart(changeAmount).MustUnShiftedBy(8).MustEndForFloat64(),
+		newUtxos = append(newUtxos, &OutPoint{
+			Index: len(newUtxos),
 		})
 		realFee = go_decimal.Decimal.MustStart(estimateFee).MustUnShiftedBy(8).MustEndForFloat64()
 	} else {
@@ -772,14 +748,14 @@ func (w *Wallet) SignMsgTx(
 // @param changeAddress 如果是空，则不添加找零输出
 // @param targetValueBtc 如果是0，则除了网络费所有余额都给 targetAddress，忽略 changeAddress；
 func (w *Wallet) BuildTx(
-	utxos []*UTXO,
+	utxos []*OutPoint,
 	changeAddress string,
 	targetAddress string,
 	targetValueBtc float64,
 	feeRate float64,
 ) (
 	msgTx *wire.MsgTx,
-	newUtxos []*UTXO,
+	newUtxos []*OutPoint,
 	realFee float64,
 	err error,
 ) {
@@ -803,7 +779,7 @@ func (w *Wallet) BuildTx(
 	}
 
 	for i := range newUtxos {
-		newUtxos[i].TxId = msgTx.TxHash().String()
+		newUtxos[i].Hash = msgTx.TxHash().String()
 	}
 
 	return msgTx, newUtxos, realFee, nil

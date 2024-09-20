@@ -20,9 +20,9 @@ func TestWallet_BuildTx(t *testing.T) {
 	}, 5*time.Second)
 
 	tx, _, _, err := w.BuildTx(
-		[]*UTXO{
+		[]*OutPoint{
 			{
-				TxId:  "",
+				Hash:  "",
 				Index: 0,
 			},
 		},

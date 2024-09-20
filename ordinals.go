@@ -20,11 +20,6 @@ import (
 	"github.com/pkg/errors"
 )
 
-type OutPoint struct {
-	Hash  string
-	Index int
-}
-
 type InscribeData struct {
 	ContentType string
 	Body        []byte

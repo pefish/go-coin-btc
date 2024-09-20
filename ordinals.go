@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/hex"
 	"fmt"
-	"math/big"
 	"strings"
 
 	"github.com/btcsuite/btcd/blockchain"
@@ -15,15 +14,10 @@ import (
 	"github.com/btcsuite/btcd/mempool"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
+	"github.com/pefish/go-coin-btc/common"
 	go_decimal "github.com/pefish/go-decimal"
 	go_format "github.com/pefish/go-format"
 	"github.com/pkg/errors"
-)
-
-const (
-	MaxStandardTxWeight = blockchain.MaxBlockWeight / 10
-	DefaultSequenceNum  = wire.MaxTxInSequenceNum - 10
-	MinDustValue        = int64(546)
 )
 
 type OutPoint struct {
@@ -38,7 +32,7 @@ type InscribeData struct {
 
 type BuildInscribeTxsParams struct {
 	OutPoints      []*OutPoint
-	FeeRate        uint64
+	FeeRate        int64
 	InscribeDatas  []*InscribeData
 	ReceiveAddress string
 }
@@ -55,7 +49,7 @@ func (w *Wallet) BuildInscribeTxs(
 ) (*BuildInscribeTxsResult, error) {
 	return w.buildInscribeTxs(&buildInscribeTxsParams{
 		BuildInscribeTxsParams: *params,
-		InscriptionOutputValue: MinDustValue,
+		InscriptionOutputValue: common.MinDustValue,
 	})
 }
 
@@ -78,8 +72,8 @@ func (w *Wallet) buildInscribeTxs(
 	var feeAddressUnlockScript []byte
 
 	commitTx := wire.NewMsgTx(wire.TxVersion)
-	inAmountSum := big.NewInt(0)
-	outAmountSum := big.NewInt(0)
+	inAmountSum := int64(0)
+	outAmountSum := int64(0)
 	for i, feeOutPoint := range params.OutPoints {
 		txOut, err := w.getTxOutByOutPoint(feeOutPoint)
 		if err != nil {
@@ -101,9 +95,9 @@ func (w *Wallet) buildInscribeTxs(
 		}
 
 		in := wire.NewTxIn(btcdOutPoint, nil, nil)
-		in.Sequence = DefaultSequenceNum
+		in.Sequence = common.DefaultSequenceNum
 		commitTx.AddTxIn(in)
-		inAmountSum.Add(inAmountSum, big.NewInt(txOut.Value))
+		inAmountSum += txOut.Value
 	}
 
 	// 根据解锁脚本计算出锁定脚本
@@ -172,7 +166,7 @@ func (w *Wallet) buildInscribeTxs(
 			return nil, err
 		}
 
-		dustTxOutValue := big.NewInt(params.InscriptionOutputValue)
+		dustTxOutValue := params.InscriptionOutputValue
 		{
 			// 评估 reveal tx 网络费
 			commitTxHash := commitTx.TxHash()
@@ -182,41 +176,37 @@ func (w *Wallet) buildInscribeTxs(
 				0,
 			), nil, nil))
 			fakeRevealTx.AddTxOut(wire.NewTxOut(params.InscriptionOutputValue, feeAddressUnlockScript))
-			virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx)))
+			virtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx))
 			emptySignature := make([]byte, 64)
 			emptyControlBlockWitness := make([]byte, 33)
-			virtualSize.Add(virtualSize, big.NewInt(
-				int64(wire.TxWitness{
-					emptySignature,
-					inscribeScript,
-					emptyControlBlockWitness,
-				}.SerializeSize()+2+3)/4,
-			))
+			virtualSize += int64(wire.TxWitness{
+				emptySignature,
+				inscribeScript,
+				emptyControlBlockWitness,
+			}.SerializeSize()+2+3) / 4
 
-			fee := virtualSize.Mul(virtualSize, big.NewInt(int64(params.FeeRate)))
-			dustTxOutValue.Add(dustTxOutValue, fee)
+			fee := virtualSize * params.FeeRate
+			dustTxOutValue += fee
 		}
-		commitTx.AddTxOut(wire.NewTxOut(dustTxOutValue.Int64(), commitTxAddressPkScript))
+		commitTx.AddTxOut(wire.NewTxOut(dustTxOutValue, commitTxAddressPkScript))
 
-		outAmountSum.Add(outAmountSum, dustTxOutValue)
+		outAmountSum += dustTxOutValue
 	}
 
 	// 评估网络费
 	commitTx.AddTxOut(wire.NewTxOut(0, feeAddressUnlockScript))
-	virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(commitTx)))
+	virtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(commitTx))
 	emptySignature := make([]byte, 64)
-	virtualSize.Add(virtualSize, big.NewInt(
-		int64(wire.TxWitness{emptySignature}.SerializeSize()+2+3)/4,
-	))
-	fee := virtualSize.Mul(virtualSize, big.NewInt(int64(params.FeeRate)))
+	virtualSize += int64(wire.TxWitness{emptySignature}.SerializeSize()+2+3) / 4
+	fee := virtualSize * params.FeeRate
 
 	// 找零
-	spentAmount := outAmountSum.Add(outAmountSum, fee)
-	changeAmount := inAmountSum.Sub(inAmountSum, spentAmount)
-	if changeAmount.Cmp(big.NewInt(0)) < 0 {
+	spentAmount := outAmountSum + fee
+	changeAmount := inAmountSum - spentAmount
+	if changeAmount < 0 {
 		return nil, errors.New("Balance not enough in commit tx.")
 	}
-	commitTx.TxOut[len(commitTx.TxOut)-1].Value = changeAmount.Int64()
+	commitTx.TxOut[len(commitTx.TxOut)-1].Value = changeAmount
 	// 签名
 	err = w.SignMsgTx(commitTx, prevOutputFetcher)
 	if err != nil {
@@ -237,7 +227,7 @@ func (w *Wallet) buildInscribeTxs(
 			nil,
 			nil,
 		)
-		in.Sequence = DefaultSequenceNum
+		in.Sequence = common.DefaultSequenceNum
 		revealTx.AddTxIn(in)
 		prevOutputFetcher.AddPrevOut(*outPoint, commitTx.TxOut[i])
 
@@ -256,8 +246,8 @@ func (w *Wallet) buildInscribeTxs(
 
 		// 检查最大 tx weight
 		revealWeight := blockchain.GetTransactionWeight(btcutil.NewTx(revealTx))
-		if revealWeight > MaxStandardTxWeight {
-			return nil, errors.Errorf("Reveal transaction weight greater than %d (MAX_STANDARD_TX_WEIGHT): %d", MaxStandardTxWeight, revealWeight)
+		if revealWeight > common.MaxStandardTxWeight {
+			return nil, errors.Errorf("Reveal transaction weight greater than %d (MAX_STANDARD_TX_WEIGHT): %d", common.MaxStandardTxWeight, revealWeight)
 		}
 
 		// 签名
@@ -305,7 +295,7 @@ type BuildTransferBrc20TxsResult struct {
 
 type BuildTransferBrc20TxsParams struct {
 	OutPoints []*OutPoint
-	FeeRate   uint64
+	FeeRate   int64
 	Symbol    string
 	Amount    float64
 	Address   string
@@ -315,7 +305,7 @@ func (w *Wallet) BuildTransferBrc20Txs(
 	params *BuildTransferBrc20TxsParams,
 ) (*BuildTransferBrc20TxsResult, error) {
 	// 先将转账铭文铸造给自己（根据 BRC20 协议，转账铭文只能先铸造给自己才能转账给别人），铭文上的 sats 数量应该是 dust+fee（转账铭文需要的 fee）
-	inscriptionOutputValue := big.NewInt(MinDustValue)
+	inscriptionOutputValue := common.MinDustValue
 
 	{
 		fakeRevealTx := wire.NewMsgTx(wire.TxVersion)
@@ -332,17 +322,15 @@ func (w *Wallet) BuildTransferBrc20Txs(
 		if err != nil {
 			return nil, err
 		}
-		fakeRevealTx.AddTxOut(wire.NewTxOut(inscriptionOutputValue.Int64(), pkScript))
-		virtualSize := big.NewInt(mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx)))
+		fakeRevealTx.AddTxOut(wire.NewTxOut(inscriptionOutputValue, pkScript))
+		virtualSize := mempool.GetTxVirtualSize(btcutil.NewTx(fakeRevealTx))
 
 		emptySignature := make([]byte, 64)
-		virtualSize.Add(virtualSize, big.NewInt(
-			int64(wire.TxWitness{
-				emptySignature,
-			}.SerializeSize()+2+3)/4,
-		))
-		fee := virtualSize.Mul(virtualSize, big.NewInt(int64(params.FeeRate)))
-		inscriptionOutputValue.Add(inscriptionOutputValue, fee)
+		virtualSize += int64(wire.TxWitness{
+			emptySignature,
+		}.SerializeSize()+2+3) / 4
+		fee := virtualSize * params.FeeRate
+		inscriptionOutputValue += fee
 	}
 
 	inscribeTxs, err := w.buildInscribeTxs(&buildInscribeTxsParams{
@@ -361,7 +349,7 @@ func (w *Wallet) BuildTransferBrc20Txs(
 			},
 			ReceiveAddress: "",
 		},
-		InscriptionOutputValue: inscriptionOutputValue.Int64(),
+		InscriptionOutputValue: inscriptionOutputValue,
 	})
 	if err != nil {
 		return nil, err
@@ -376,14 +364,14 @@ func (w *Wallet) BuildTransferBrc20Txs(
 		0,
 	)
 	in := wire.NewTxIn(inscriptionTxOutPoint, nil, nil)
-	in.Sequence = DefaultSequenceNum
+	in.Sequence = common.DefaultSequenceNum
 	sendInscriptionTx.AddTxIn(in)
 	prevOutputFetcher.AddPrevOut(*inscriptionTxOutPoint, inscribeTxs.RevealTxs[0].TxOut[0])
 	pkScript, err := w.LockScriptFromAddress(params.Address)
 	if err != nil {
 		return nil, err
 	}
-	sendInscriptionTx.AddTxOut(wire.NewTxOut(MinDustValue, pkScript))
+	sendInscriptionTx.AddTxOut(wire.NewTxOut(common.MinDustValue, pkScript))
 
 	err = w.SignMsgTx(sendInscriptionTx, prevOutputFetcher)
 	if err != nil {
